@@ -1,0 +1,142 @@
+/* HQM Momentum Scanner - Custom Styles */
+
+body {
+    background-color: #0d1117;
+    min-height: 100vh;
+}
+
+.card {
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* Form controls */
+.form-control:focus,
+.form-range:focus {
+    border-color: #198754;
+    box-shadow: 0 0 0 0.25rem rgba(25, 135, 84, 0.25);
+}
+
+/* Table styling */
+.table-dark {
+    --bs-table-bg: transparent;
+}
+
+.table-dark tbody tr:hover {
+    background-color: rgba(25, 135, 84, 0.1);
+}
+
+.table th {
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.5px;
+}
+
+/* HQM Score badge */
+.hqm-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-weight: 600;
+    min-width: 50px;
+    text-align: center;
+}
+
+.hqm-excellent {
+    background-color: rgba(25, 135, 84, 0.2);
+    color: #198754;
+    border: 1px solid rgba(25, 135, 84, 0.5);
+}
+
+.hqm-good {
+    background-color: rgba(13, 110, 253, 0.2);
+    color: #0d6efd;
+    border: 1px solid rgba(13, 110, 253, 0.5);
+}
+
+/* Percentile indicators */
+.pct-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 4px;
+}
+
+.pct-high { background-color: #198754; }
+.pct-medium { background-color: #0d6efd; }
+.pct-low { background-color: #ffc107; }
+.pct-very-low { background-color: #6c757d; }
+
+/* Return values */
+.return-positive {
+    color: #198754;
+}
+
+.return-negative {
+    color: #dc3545;
+}
+
+/* Progress bar */
+.progress {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Scan button states */
+#scanBtn.scanning {
+    pointer-events: none;
+}
+
+#scanBtn.scanning .bi-search {
+    display: none;
+}
+
+#scanBtn.scanning::before {
+    content: '';
+    display: inline-block;
+    width: 1rem;
+    height: 1rem;
+    margin-right: 0.5rem;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.75s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Chart containers */
+#allocationChart,
+#hqmChart {
+    max-height: 250px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .table th, .table td {
+        padding: 0.5rem;
+        font-size: 0.85rem;
+    }
+}
+
+/* Navbar brand */
+.navbar-brand {
+    font-weight: 600;
+    font-size: 1.25rem;
+}
+
+/* Ticker column */
+.ticker-cell {
+    font-weight: 700;
+    color: #fff;
+}
+
+/* Exchange badge */
+.exchange-badge {
+    font-size: 0.65rem;
+    padding: 0.15rem 0.35rem;
+    vertical-align: middle;
+    margin-left: 0.25rem;
+}

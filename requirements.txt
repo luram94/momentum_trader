@@ -1,0 +1,6 @@
+numpy
+pandas
+scipy
+xlsxwriter
+finvizfinance
+flask

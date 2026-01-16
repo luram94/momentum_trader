@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HQM Momentum Scanner</title>
+    <!-- Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom border-secondary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <i class="bi bi-graph-up-arrow text-success me-2"></i>
+                HQM Momentum Scanner
+            </a>
+            <span class="navbar-text text-muted">
+                Inspired by Qullamaggie
+            </span>
+        </div>
+    </nav>
+
+    <div class="container-fluid py-4">
+        <div class="row">
+            <!-- Left Panel - Scanner Controls -->
+            <div class="col-lg-3 mb-4">
+                <!-- Data Status Card -->
+                <div class="card bg-dark border-secondary mb-4">
+                    <div class="card-header bg-secondary bg-opacity-25 d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0"><i class="bi bi-database me-2"></i>Data Status</h6>
+                        <button class="btn btn-outline-success btn-sm" id="refreshBtn">
+                            <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div id="noDataAlert" class="alert alert-warning py-2 mb-3 d-none">
+                            <i class="bi bi-exclamation-triangle me-1"></i>
+                            No data. Click Refresh to fetch stocks.
+                        </div>
+                        <div class="row g-2" id="dataStatusInfo">
+                            <div class="col-6">
+                                <div class="text-muted small">Stocks</div>
+                                <div class="fw-bold" id="stockCount">-</div>
+                            </div>
+                            <div class="col-6">
+                                <div class="text-muted small">Data Age</div>
+                                <div class="fw-bold" id="dataAge">-</div>
+                            </div>
+                            <div class="col-12">
+                                <div class="text-muted small">Last Refresh</div>
+                                <div class="small" id="lastRefresh">-</div>
+                            </div>
+                        </div>
+                        <!-- Refresh Progress -->
+                        <div id="refreshProgress" class="mt-3 d-none">
+                            <div class="progress mb-2" style="height: 6px;">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated bg-info"
+                                     id="refreshProgressBar" style="width: 0%"></div>
+                            </div>
+                            <p class="text-muted small mb-0" id="refreshMessage">Refreshing...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Scanner Settings Card -->
+                <div class="card bg-dark border-secondary">
+                    <div class="card-header bg-secondary bg-opacity-25">
+                        <h5 class="mb-0"><i class="bi bi-sliders me-2"></i>Scanner Settings</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="scanForm">
+                            <!-- Portfolio Size -->
+                            <div class="mb-3">
+                                <label for="portfolioSize" class="form-label">
+                                    Portfolio Size
+                                    <span class="text-muted">($)</span>
+                                </label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-secondary border-secondary">$</span>
+                                    <input type="number" class="form-control bg-dark border-secondary"
+                                           id="portfolioSize" value="10000" min="1000" step="1000">
+                                </div>
+                                <div class="form-text">Minimum $1,000</div>
+                            </div>
+
+                            <!-- Number of Positions -->
+                            <div class="mb-3">
+                                <label for="numPositions" class="form-label">
+                                    Number of Positions
+                                </label>
+                                <input type="range" class="form-range" id="numPositions"
+                                       min="3" max="15" value="8">
+                                <div class="d-flex justify-content-between">
+                                    <span class="text-muted small">3</span>
+                                    <span id="numPositionsDisplay" class="badge bg-primary">8 stocks</span>
+                                    <span class="text-muted small">15</span>
+                                </div>
+                            </div>
+
+                            <!-- Position Size Display -->
+                            <div class="mb-4 p-3 bg-secondary bg-opacity-10 rounded">
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span class="text-muted">Position Size:</span>
+                                    <span id="positionSize" class="fw-bold">$1,250</span>
+                                </div>
+                                <div class="d-flex justify-content-between">
+                                    <span class="text-muted">Weight per Stock:</span>
+                                    <span id="positionWeight" class="fw-bold">12.5%</span>
+                                </div>
+                            </div>
+
+                            <!-- Scan Button -->
+                            <button type="submit" class="btn btn-success w-100" id="scanBtn" disabled>
+                                <i class="bi bi-search me-2"></i>Run Scan
+                            </button>
+                            <div class="form-text text-center mt-2" id="scanHint">
+                                Refresh data first to enable scanning
+                            </div>
+                        </form>
+
+                        <!-- Progress Section -->
+                        <div id="progressSection" class="mt-4 d-none">
+                            <div class="progress mb-2" style="height: 8px;">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated bg-success"
+                                     id="progressBar" style="width: 0%"></div>
+                            </div>
+                            <p class="text-muted small mb-0" id="progressMessage">Starting scan...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Summary Card -->
+                <div class="card bg-dark border-secondary mt-4 d-none" id="summaryCard">
+                    <div class="card-header bg-secondary bg-opacity-25">
+                        <h5 class="mb-0"><i class="bi bi-bar-chart me-2"></i>Scan Summary</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-6">
+                                <div class="text-muted small">Scanned</div>
+                                <div class="fs-5 fw-bold" id="summaryScanned">-</div>
+                            </div>
+                            <div class="col-6">
+                                <div class="text-muted small">Quality Filter</div>
+                                <div class="fs-5 fw-bold" id="summaryFiltered">-</div>
+                            </div>
+                            <div class="col-6">
+                                <div class="text-muted small">Invested</div>
+                                <div class="fs-5 fw-bold text-success" id="summaryInvested">-</div>
+                            </div>
+                            <div class="col-6">
+                                <div class="text-muted small">Cash Left</div>
+                                <div class="fs-5 fw-bold text-warning" id="summaryCash">-</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel - Results -->
+            <div class="col-lg-9">
+                <!-- Charts Row -->
+                <div class="row mb-4 d-none" id="chartsRow">
+                    <div class="col-md-6">
+                        <div class="card bg-dark border-secondary h-100">
+                            <div class="card-header bg-secondary bg-opacity-25">
+                                <h6 class="mb-0">Portfolio Allocation</h6>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="allocationChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card bg-dark border-secondary h-100">
+                            <div class="card-header bg-secondary bg-opacity-25">
+                                <h6 class="mb-0">HQM Scores</h6>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="hqmChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Results Table -->
+                <div class="card bg-dark border-secondary">
+                    <div class="card-header bg-secondary bg-opacity-25 d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="bi bi-table me-2"></i>HQM Portfolio</h5>
+                        <button class="btn btn-outline-primary btn-sm d-none" id="exportBtn">
+                            <i class="bi bi-download me-1"></i>Export CSV
+                        </button>
+                    </div>
+                    <div class="card-body p-0">
+                        <!-- Empty State -->
+                        <div id="emptyState" class="text-center py-5">
+                            <i class="bi bi-graph-up display-1 text-muted mb-3"></i>
+                            <h5 class="text-muted">No scan results yet</h5>
+                            <p class="text-muted">
+                                1. Click <strong>Refresh</strong> to fetch stock data<br>
+                                2. Configure settings and click <strong>Run Scan</strong>
+                            </p>
+                        </div>
+
+                        <!-- Results Table -->
+                        <div class="table-responsive d-none" id="resultsTable">
+                            <table class="table table-dark table-hover mb-0">
+                                <thead class="table-secondary">
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Ticker</th>
+                                        <th>Price</th>
+                                        <th>HQM Score</th>
+                                        <th>1M</th>
+                                        <th>3M</th>
+                                        <th>6M</th>
+                                        <th>1Y</th>
+                                        <th>Shares</th>
+                                        <th>Value</th>
+                                        <th>Weight</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="resultsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Momentum Legend -->
+                <div class="card bg-dark border-secondary mt-4 d-none" id="legendCard">
+                    <div class="card-body py-2">
+                        <div class="d-flex align-items-center justify-content-center gap-4 small">
+                            <span><i class="bi bi-circle-fill text-success me-1"></i> &gt;75th percentile</span>
+                            <span><i class="bi bi-circle-fill text-primary me-1"></i> 50-75th percentile</span>
+                            <span><i class="bi bi-circle-fill text-warning me-1"></i> 25-50th percentile</span>
+                            <span><i class="bi bi-circle-fill text-secondary me-1"></i> &lt;25th percentile</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="text-center py-3 text-muted border-top border-secondary mt-4">
+        <small>HQM Strategy - Multi-timeframe momentum analysis | Data cached in SQLite for fast scans</small>
+    </footer>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
