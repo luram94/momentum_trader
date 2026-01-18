@@ -40,6 +40,12 @@ const dataAgeDisplay = document.getElementById('dataAge');
 const lastRefreshDisplay = document.getElementById('lastRefresh');
 const noDataAlert = document.getElementById('noDataAlert');
 
+// SMA10 filter elements
+const enableSma10Filter = document.getElementById('enableSma10Filter');
+const sma10FilterControls = document.getElementById('sma10FilterControls');
+const maxSma10DistanceInput = document.getElementById('maxSma10Distance');
+const maxSma10Display = document.getElementById('maxSma10Display');
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     updatePositionCalculations();
@@ -52,9 +58,32 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshBtn.addEventListener('click', handleRefresh);
     exportBtn.addEventListener('click', exportToCSV);
 
+    // SMA10 filter event listeners
+    enableSma10Filter.addEventListener('change', toggleSma10Filter);
+    maxSma10DistanceInput.addEventListener('input', updateSma10Display);
+
     // Poll data status periodically
     setInterval(fetchDataStatus, 60000); // Every minute
 });
+
+/**
+ * Toggle SMA10 filter controls visibility
+ */
+function toggleSma10Filter() {
+    if (enableSma10Filter.checked) {
+        sma10FilterControls.classList.remove('d-none');
+    } else {
+        sma10FilterControls.classList.add('d-none');
+    }
+}
+
+/**
+ * Update SMA10 distance display
+ */
+function updateSma10Display() {
+    const value = parseInt(maxSma10DistanceInput.value);
+    maxSma10Display.textContent = `Max +${value}% over SMA10`;
+}
 
 /**
  * Fetch and display data status
@@ -215,12 +244,19 @@ async function handleScanSubmit(e) {
         return;
     }
 
+    // Get SMA10 filter setting
+    const maxSma10Distance = enableSma10Filter.checked ? parseInt(maxSma10DistanceInput.value) : null;
+
     // Start scan
     try {
         const response = await fetch('/api/scan', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ portfolio_size: portfolioSize, num_positions: numPositions })
+            body: JSON.stringify({
+                portfolio_size: portfolioSize,
+                num_positions: numPositions,
+                max_sma10_distance: maxSma10Distance
+            })
         });
 
         const data = await response.json();
@@ -340,7 +376,13 @@ function displayResults(results, summary) {
         <tr>
             <td class="text-muted">${index + 1}</td>
             <td class="ticker-cell">
-                ${stock.Ticker}
+                <a href="https://es.tradingview.com/chart/EyK3ZRHL/?symbol=${stock.Exchange}%3A${stock.Ticker}"
+                   target="_blank"
+                   class="ticker-link"
+                   title="Ver gráfico en TradingView">
+                    ${stock.Ticker}
+                    <i class="bi bi-box-arrow-up-right ms-1 small"></i>
+                </a>
                 <span class="badge ${stock.Exchange === 'NASDAQ' ? 'bg-info' : 'bg-secondary'} exchange-badge">
                     ${stock.Exchange}
                 </span>
@@ -351,6 +393,7 @@ function displayResults(results, summary) {
                     ${stock.HQM_Score}
                 </span>
             </td>
+            <td>${formatSma10Distance(stock.SMA10_Distance)}</td>
             <td>${formatReturn(stock.Return_1M, stock.Pct_1M)}</td>
             <td>${formatReturn(stock.Return_3M, stock.Pct_3M)}</td>
             <td>${formatReturn(stock.Return_6M, stock.Pct_6M)}</td>
@@ -387,6 +430,34 @@ function getPctClass(percentile) {
     if (percentile >= 50) return 'pct-medium';
     if (percentile >= 25) return 'pct-low';
     return 'pct-very-low';
+}
+
+/**
+ * Format SMA10 distance with color coding
+ * Green: close to SMA10 (good entry), Yellow: moderately extended, Red: very extended
+ */
+function formatSma10Distance(distance) {
+    if (distance === null || distance === undefined) {
+        return '<span class="text-muted">-</span>';
+    }
+
+    const sign = distance >= 0 ? '+' : '';
+    let colorClass = 'sma10-good';      // Green: <= 5%
+    let icon = 'bi-check-circle-fill';
+
+    if (distance > 15) {
+        colorClass = 'sma10-extended';   // Red: > 15%
+        icon = 'bi-exclamation-triangle-fill';
+    } else if (distance > 8) {
+        colorClass = 'sma10-moderate';   // Yellow: 8-15%
+        icon = 'bi-dash-circle-fill';
+    }
+
+    return `
+        <span class="${colorClass}" title="Distance from 10-day moving average">
+            <i class="bi ${icon} me-1 small"></i>${sign}${distance.toFixed(1)}%
+        </span>
+    `;
 }
 
 /**
@@ -503,9 +574,10 @@ function exportToCSV() {
 
     const headers = [
         'Ticker', 'Price', 'Market Cap', 'Exchange',
+        'SMA10 Distance', 'HQM Score',
         '1M Return', '1M Pct', '3M Return', '3M Pct',
         '6M Return', '6M Pct', '1Y Return', '1Y Pct',
-        'HQM Score', 'Shares', 'Value', 'Weight'
+        'Shares', 'Value', 'Weight'
     ];
 
     const rows = scanResults.results.map(r => [
@@ -513,6 +585,8 @@ function exportToCSV() {
         r.Price,
         r.Market_Cap_Display,
         r.Exchange,
+        r.SMA10_Distance !== null ? r.SMA10_Distance.toFixed(1) + '%' : '-',
+        r.HQM_Score,
         (r.Return_1M * 100).toFixed(2) + '%',
         r.Pct_1M,
         (r.Return_3M * 100).toFixed(2) + '%',
@@ -521,7 +595,6 @@ function exportToCSV() {
         r.Pct_6M,
         (r.Return_1Y * 100).toFixed(2) + '%',
         r.Pct_1Y,
-        r.HQM_Score,
         r.Shares,
         r.Value,
         r.Weight.toFixed(1) + '%'

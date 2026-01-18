@@ -13,5 +13,3 @@ To identify high-quality momentum, we're going to build a strategy that selects 
 * 3-month price returns
 * 6-month price returns
 * 1-year price returns
-
-Let's start by building our DataFrame.

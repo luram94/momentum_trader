@@ -115,6 +115,14 @@ def start_scan():
     data = request.get_json()
     portfolio_size = float(data.get('portfolio_size', 10000))
     num_positions = int(data.get('num_positions', 8))
+    max_sma10_distance = data.get('max_sma10_distance')
+
+    # Convert max_sma10_distance to float if provided
+    if max_sma10_distance is not None and max_sma10_distance != '':
+        try:
+            max_sma10_distance = float(max_sma10_distance)
+        except (ValueError, TypeError):
+            max_sma10_distance = None
 
     # Validate
     if portfolio_size < 1000:
@@ -126,9 +134,9 @@ def start_scan():
 
     def scan_thread():
         try:
-            update_state(progress=50, message='Calculating HQM scores...')
+            update_state(progress=30, message='Calculating HQM scores...')
 
-            result = run_hqm_scan_from_db(portfolio_size, num_positions)
+            result = run_hqm_scan_from_db(portfolio_size, num_positions, max_sma10_distance=max_sma10_distance)
 
             if result['success']:
                 update_state(

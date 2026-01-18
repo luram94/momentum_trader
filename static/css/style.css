@@ -133,6 +133,44 @@ body {
     color: #fff;
 }
 
+/* Ticker link */
+.ticker-link {
+    color: #20c997;
+    text-decoration: none;
+    font-weight: 700;
+    transition: color 0.2s;
+}
+
+.ticker-link:hover {
+    color: #63e6be;
+    text-decoration: underline;
+}
+
+.ticker-link .bi-box-arrow-up-right {
+    opacity: 0.5;
+    font-size: 0.7rem;
+}
+
+.ticker-link:hover .bi-box-arrow-up-right {
+    opacity: 1;
+}
+
+/* SMA10 distance indicators */
+.sma10-good {
+    color: #198754;
+    font-weight: 600;
+}
+
+.sma10-moderate {
+    color: #ffc107;
+    font-weight: 600;
+}
+
+.sma10-extended {
+    color: #dc3545;
+    font-weight: 600;
+}
+
 /* Exchange badge */
 .exchange-badge {
     font-size: 0.65rem;

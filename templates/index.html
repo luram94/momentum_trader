@@ -103,6 +103,31 @@
                                 </div>
                             </div>
 
+                            <!-- Entry Filter (SMA10) -->
+                            <div class="mb-3">
+                                <label class="form-label">
+                                    <i class="bi bi-funnel me-1"></i>Entry Filter (SMA10)
+                                </label>
+                                <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" id="enableSma10Filter">
+                                    <label class="form-check-label small" for="enableSma10Filter">
+                                        Filter extended stocks
+                                    </label>
+                                </div>
+                                <div id="sma10FilterControls" class="d-none">
+                                    <input type="range" class="form-range" id="maxSma10Distance"
+                                           min="5" max="30" value="15" step="1">
+                                    <div class="d-flex justify-content-between">
+                                        <span class="text-muted small">5%</span>
+                                        <span id="maxSma10Display" class="badge bg-warning text-dark">Max +15% over SMA10</span>
+                                        <span class="text-muted small">30%</span>
+                                    </div>
+                                    <div class="form-text">
+                                        Exclude stocks too far above their 10-day moving average
+                                    </div>
+                                </div>
+                            </div>
+
                             <!-- Position Size Display -->
                             <div class="mb-4 p-3 bg-secondary bg-opacity-10 rounded">
                                 <div class="d-flex justify-content-between mb-2">
@@ -217,6 +242,7 @@
                                         <th>Ticker</th>
                                         <th>Price</th>
                                         <th>HQM Score</th>
+                                        <th>SMA10</th>
                                         <th>1M</th>
                                         <th>3M</th>
                                         <th>6M</th>

@@ -15,6 +15,7 @@ from pathlib import Path
 from scipy.stats import percentileofscore
 from finvizfinance.screener.performance import Performance
 from finvizfinance.screener.overview import Overview
+import yfinance as yf
 
 # Database file path
 DB_PATH = Path(__file__).parent / 'hqm_data.db'
@@ -266,16 +267,78 @@ def get_stock_count():
     return row['count'] if row else 0
 
 
-def run_hqm_scan_from_db(portfolio_size, num_positions, save_scan=True):
+def get_sma10_distance(tickers, progress_callback=None):
+    """
+    Calculate the distance from current price to SMA10 for a list of tickers.
+
+    Args:
+        tickers: List of ticker symbols
+        progress_callback: Optional function(pct, msg) for UI updates
+
+    Returns:
+        dict mapping ticker -> distance percentage (positive = above SMA10)
+    """
+    if not tickers:
+        return {}
+
+    results = {}
+    batch_size = 50  # yfinance can handle batches
+
+    for i in range(0, len(tickers), batch_size):
+        batch = tickers[i:i + batch_size]
+        batch_str = ' '.join(batch)
+
+        try:
+            # Download last 20 days of data (need at least 10 for SMA10)
+            data = yf.download(batch_str, period='1mo', progress=False, threads=True)
+
+            if data.empty:
+                continue
+
+            # Handle single ticker case (different structure)
+            if len(batch) == 1:
+                ticker = batch[0]
+                if 'Close' in data.columns and len(data) >= 10:
+                    closes = data['Close']
+                    sma10 = closes.rolling(window=10).mean().iloc[-1]
+                    current_price = closes.iloc[-1]
+                    if sma10 > 0:
+                        distance = ((current_price - sma10) / sma10) * 100
+                        results[ticker] = round(distance, 2)
+            else:
+                # Multiple tickers - data has MultiIndex columns
+                for ticker in batch:
+                    try:
+                        if ('Close', ticker) in data.columns:
+                            closes = data['Close'][ticker].dropna()
+                            if len(closes) >= 10:
+                                sma10 = closes.rolling(window=10).mean().iloc[-1]
+                                current_price = closes.iloc[-1]
+                                if sma10 > 0:
+                                    distance = ((current_price - sma10) / sma10) * 100
+                                    results[ticker] = round(distance, 2)
+                    except Exception:
+                        continue
+
+        except Exception as e:
+            print(f"Error fetching SMA10 data for batch: {e}")
+            continue
+
+    return results
+
+
+def run_hqm_scan_from_db(portfolio_size, num_positions, save_scan=True, max_sma10_distance=None):
     """
     Run HQM scan using cached database data.
 
-    This is FAST because it doesn't hit the API.
+    This is FAST because it doesn't hit the API (except for SMA10 calculation).
 
     Args:
         portfolio_size: Portfolio value in USD
         num_positions: Number of stocks to select
         save_scan: Whether to save scan to history
+        max_sma10_distance: Max allowed distance from SMA10 (e.g., 15 = filter out stocks >15% above SMA10)
+                           Set to None to disable filtering (still shows the metric)
 
     Returns:
         dict with results and summary
@@ -314,9 +377,36 @@ def run_hqm_scan_from_db(portfolio_size, num_positions, save_scan=True):
     df = df[df['Min_Percentile'] >= 25]
     filtered_out = total_before_filter - len(df)
 
-    # Sort by HQM Score and select top N
+    # Sort by HQM Score
     df = df.sort_values('HQM_Score', ascending=False)
-    df = df.head(num_positions)
+
+    # Get more candidates than needed to allow for SMA10 filtering
+    candidates_multiplier = 3 if max_sma10_distance is not None else 1.5
+    candidates_count = min(int(num_positions * candidates_multiplier), len(df))
+    df_candidates = df.head(candidates_count).copy()
+
+    # Calculate SMA10 distance for candidates
+    tickers = df_candidates['Ticker'].tolist()
+    sma10_distances = get_sma10_distance(tickers)
+
+    # Add SMA10 distance to dataframe
+    df_candidates['SMA10_Distance'] = df_candidates['Ticker'].map(
+        lambda t: sma10_distances.get(t, None)
+    )
+
+    # Apply SMA10 filter if specified
+    filtered_by_sma10 = 0
+    if max_sma10_distance is not None:
+        before_sma10_filter = len(df_candidates)
+        # Keep stocks where SMA10_Distance is None (couldn't calculate) or within threshold
+        df_candidates = df_candidates[
+            (df_candidates['SMA10_Distance'].isna()) |
+            (df_candidates['SMA10_Distance'] <= max_sma10_distance)
+        ]
+        filtered_by_sma10 = before_sma10_filter - len(df_candidates)
+
+    # Select top N from remaining candidates
+    df = df_candidates.head(num_positions)
 
     # Calculate position sizes
     import math
@@ -388,7 +478,7 @@ def run_hqm_scan_from_db(portfolio_size, num_positions, save_scan=True):
         'Ticker', 'Price', 'Market_Cap_Display', 'Exchange',
         'Return_1M', 'Pct_1M', 'Return_3M', 'Pct_3M',
         'Return_6M', 'Pct_6M', 'Return_1Y', 'Pct_1Y',
-        'HQM_Score', 'Shares', 'Value', 'Weight'
+        'HQM_Score', 'SMA10_Distance', 'Shares', 'Value', 'Weight'
     ]].to_dict('records')
 
     # Get data age
@@ -399,6 +489,8 @@ def run_hqm_scan_from_db(portfolio_size, num_positions, save_scan=True):
         'total_scanned': get_stock_count(),
         'after_quality_filter': total_before_filter - filtered_out,
         'filtered_out': filtered_out,
+        'filtered_by_sma10': filtered_by_sma10,
+        'max_sma10_distance': max_sma10_distance,
         'selected': len(df),
         'total_invested': round(total_invested, 2),
         'cash_remaining': round(cash_remaining, 2),
