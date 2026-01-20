@@ -1,0 +1,18 @@
+cat >> .gitignore << EOF
+# Bases de datos
+*.db
+*.sqlite
+*.sqlite3
+
+# Archivos de Excel
+*.xlsx
+*.xls
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Claude
+.claude/
+EOF
