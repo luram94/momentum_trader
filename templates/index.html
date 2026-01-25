@@ -20,253 +20,681 @@
                 <i class="bi bi-graph-up-arrow text-success me-2"></i>
                 HQM Momentum Scanner
             </a>
-            <span class="navbar-text text-muted">
-                Inspired by Qullamaggie
-            </span>
+            <div class="d-flex align-items-center">
+                <span class="navbar-text text-muted me-3">
+                    Inspired by Qullamaggie
+                </span>
+                <!-- Theme Toggle -->
+                <button class="btn btn-outline-secondary btn-sm" id="themeToggle" title="Toggle theme">
+                    <i class="bi bi-moon-fill" id="themeIcon"></i>
+                </button>
+            </div>
         </div>
     </nav>
 
     <div class="container-fluid py-4">
-        <div class="row">
-            <!-- Left Panel - Scanner Controls -->
-            <div class="col-lg-3 mb-4">
-                <!-- Data Status Card -->
-                <div class="card bg-dark border-secondary mb-4">
-                    <div class="card-header bg-secondary bg-opacity-25 d-flex justify-content-between align-items-center">
-                        <h6 class="mb-0"><i class="bi bi-database me-2"></i>Data Status</h6>
-                        <button class="btn btn-outline-success btn-sm" id="refreshBtn">
-                            <i class="bi bi-arrow-clockwise me-1"></i>Refresh
-                        </button>
-                    </div>
-                    <div class="card-body">
-                        <div id="noDataAlert" class="alert alert-warning py-2 mb-3 d-none">
-                            <i class="bi bi-exclamation-triangle me-1"></i>
-                            No data. Click Refresh to fetch stocks.
-                        </div>
-                        <div class="row g-2" id="dataStatusInfo">
-                            <div class="col-6">
-                                <div class="text-muted small">Stocks</div>
-                                <div class="fw-bold" id="stockCount">-</div>
-                            </div>
-                            <div class="col-6">
-                                <div class="text-muted small">Data Age</div>
-                                <div class="fw-bold" id="dataAge">-</div>
-                            </div>
-                            <div class="col-12">
-                                <div class="text-muted small">Last Refresh</div>
-                                <div class="small" id="lastRefresh">-</div>
-                            </div>
-                        </div>
-                        <!-- Refresh Progress -->
-                        <div id="refreshProgress" class="mt-3 d-none">
-                            <div class="progress mb-2" style="height: 6px;">
-                                <div class="progress-bar progress-bar-striped progress-bar-animated bg-info"
-                                     id="refreshProgressBar" style="width: 0%"></div>
-                            </div>
-                            <p class="text-muted small mb-0" id="refreshMessage">Refreshing...</p>
-                        </div>
-                    </div>
-                </div>
+        <!-- Navigation Tabs -->
+        <ul class="nav nav-tabs mb-4" id="mainTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="scanner-tab" data-bs-toggle="tab" data-bs-target="#scanner" type="button" role="tab">
+                    <i class="bi bi-search me-1"></i>Scanner
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="watchlist-tab" data-bs-toggle="tab" data-bs-target="#watchlist" type="button" role="tab">
+                    <i class="bi bi-eye me-1"></i>Watchlist
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="portfolio-tab" data-bs-toggle="tab" data-bs-target="#portfolio" type="button" role="tab">
+                    <i class="bi bi-briefcase me-1"></i>Portfolio
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="sectors-tab" data-bs-toggle="tab" data-bs-target="#sectors" type="button" role="tab">
+                    <i class="bi bi-pie-chart me-1"></i>Sectors
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="backtest-tab" data-bs-toggle="tab" data-bs-target="#backtest" type="button" role="tab">
+                    <i class="bi bi-clock-history me-1"></i>Backtest
+                </button>
+            </li>
+        </ul>
 
-                <!-- Scanner Settings Card -->
-                <div class="card bg-dark border-secondary">
-                    <div class="card-header bg-secondary bg-opacity-25">
-                        <h5 class="mb-0"><i class="bi bi-sliders me-2"></i>Scanner Settings</h5>
-                    </div>
-                    <div class="card-body">
-                        <form id="scanForm">
-                            <!-- Portfolio Size -->
-                            <div class="mb-3">
-                                <label for="portfolioSize" class="form-label">
-                                    Portfolio Size
-                                    <span class="text-muted">($)</span>
-                                </label>
-                                <div class="input-group">
-                                    <span class="input-group-text bg-secondary border-secondary">$</span>
-                                    <input type="number" class="form-control bg-dark border-secondary"
-                                           id="portfolioSize" value="10000" min="1000" step="1000">
-                                </div>
-                                <div class="form-text">Minimum $1,000</div>
+        <!-- Tab Content -->
+        <div class="tab-content" id="mainTabContent">
+            <!-- Scanner Tab -->
+            <div class="tab-pane fade show active" id="scanner" role="tabpanel">
+                <div class="row">
+                    <!-- Left Panel - Scanner Controls -->
+                    <div class="col-lg-3 mb-4">
+                        <!-- Data Status Card -->
+                        <div class="card bg-dark border-secondary mb-4">
+                            <div class="card-header bg-secondary bg-opacity-25 d-flex justify-content-between align-items-center">
+                                <h6 class="mb-0"><i class="bi bi-database me-2"></i>Data Status</h6>
+                                <button class="btn btn-outline-success btn-sm" id="refreshBtn">
+                                    <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+                                </button>
                             </div>
-
-                            <!-- Number of Positions -->
-                            <div class="mb-3">
-                                <label for="numPositions" class="form-label">
-                                    Number of Positions
-                                </label>
-                                <input type="range" class="form-range" id="numPositions"
-                                       min="3" max="15" value="8">
-                                <div class="d-flex justify-content-between">
-                                    <span class="text-muted small">3</span>
-                                    <span id="numPositionsDisplay" class="badge bg-primary">8 stocks</span>
-                                    <span class="text-muted small">15</span>
+                            <div class="card-body">
+                                <div id="noDataAlert" class="alert alert-warning py-2 mb-3 d-none">
+                                    <i class="bi bi-exclamation-triangle me-1"></i>
+                                    No data. Click Refresh to fetch stocks.
                                 </div>
-                            </div>
-
-                            <!-- Entry Filter (SMA10) -->
-                            <div class="mb-3">
-                                <label class="form-label">
-                                    <i class="bi bi-funnel me-1"></i>Entry Filter (SMA10)
-                                </label>
-                                <div class="form-check form-switch mb-2">
-                                    <input class="form-check-input" type="checkbox" id="enableSma10Filter">
-                                    <label class="form-check-label small" for="enableSma10Filter">
-                                        Filter extended stocks
-                                    </label>
-                                </div>
-                                <div id="sma10FilterControls" class="d-none">
-                                    <input type="range" class="form-range" id="maxSma10Distance"
-                                           min="5" max="30" value="15" step="1">
-                                    <div class="d-flex justify-content-between">
-                                        <span class="text-muted small">5%</span>
-                                        <span id="maxSma10Display" class="badge bg-warning text-dark">Max +15% over SMA10</span>
-                                        <span class="text-muted small">30%</span>
+                                <div class="row g-2" id="dataStatusInfo">
+                                    <div class="col-6">
+                                        <div class="text-muted small">Stocks</div>
+                                        <div class="fw-bold" id="stockCount">-</div>
                                     </div>
-                                    <div class="form-text">
-                                        Exclude stocks too far above their 10-day moving average
+                                    <div class="col-6">
+                                        <div class="text-muted small">Data Age</div>
+                                        <div class="fw-bold" id="dataAge">-</div>
+                                    </div>
+                                    <div class="col-12">
+                                        <div class="text-muted small">Last Refresh</div>
+                                        <div class="small" id="lastRefresh">-</div>
                                     </div>
                                 </div>
-                            </div>
-
-                            <!-- Position Size Display -->
-                            <div class="mb-4 p-3 bg-secondary bg-opacity-10 rounded">
-                                <div class="d-flex justify-content-between mb-2">
-                                    <span class="text-muted">Position Size:</span>
-                                    <span id="positionSize" class="fw-bold">$1,250</span>
-                                </div>
-                                <div class="d-flex justify-content-between">
-                                    <span class="text-muted">Weight per Stock:</span>
-                                    <span id="positionWeight" class="fw-bold">12.5%</span>
+                                <!-- Refresh Progress -->
+                                <div id="refreshProgress" class="mt-3 d-none">
+                                    <div class="progress mb-2" style="height: 6px;">
+                                        <div class="progress-bar progress-bar-striped progress-bar-animated bg-info"
+                                             id="refreshProgressBar" style="width: 0%"></div>
+                                    </div>
+                                    <p class="text-muted small mb-0" id="refreshMessage">Refreshing...</p>
                                 </div>
                             </div>
+                        </div>
 
-                            <!-- Scan Button -->
-                            <button type="submit" class="btn btn-success w-100" id="scanBtn" disabled>
-                                <i class="bi bi-search me-2"></i>Run Scan
-                            </button>
-                            <div class="form-text text-center mt-2" id="scanHint">
-                                Refresh data first to enable scanning
+                        <!-- Scanner Settings Card -->
+                        <div class="card bg-dark border-secondary">
+                            <div class="card-header bg-secondary bg-opacity-25">
+                                <h5 class="mb-0"><i class="bi bi-sliders me-2"></i>Scanner Settings</h5>
                             </div>
-                        </form>
+                            <div class="card-body">
+                                <form id="scanForm">
+                                    <!-- Portfolio Size -->
+                                    <div class="mb-3">
+                                        <label for="portfolioSize" class="form-label">
+                                            Portfolio Size <span class="text-muted">($)</span>
+                                        </label>
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-secondary border-secondary">$</span>
+                                            <input type="number" class="form-control bg-dark border-secondary"
+                                                   id="portfolioSize" value="10000" min="1000" step="1000">
+                                        </div>
+                                    </div>
 
-                        <!-- Progress Section -->
-                        <div id="progressSection" class="mt-4 d-none">
-                            <div class="progress mb-2" style="height: 8px;">
-                                <div class="progress-bar progress-bar-striped progress-bar-animated bg-success"
-                                     id="progressBar" style="width: 0%"></div>
+                                    <!-- Number of Positions -->
+                                    <div class="mb-3">
+                                        <label for="numPositions" class="form-label">Number of Positions</label>
+                                        <input type="range" class="form-range" id="numPositions" min="3" max="15" value="8">
+                                        <div class="d-flex justify-content-between">
+                                            <span class="text-muted small">3</span>
+                                            <span id="numPositionsDisplay" class="badge bg-primary">8 stocks</span>
+                                            <span class="text-muted small">15</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Advanced Filters Accordion -->
+                                    <div class="accordion accordion-flush mb-3" id="filtersAccordion">
+                                        <div class="accordion-item bg-dark">
+                                            <h2 class="accordion-header">
+                                                <button class="accordion-button collapsed bg-dark text-light small py-2" type="button"
+                                                        data-bs-toggle="collapse" data-bs-target="#advancedFilters">
+                                                    <i class="bi bi-funnel me-2"></i>Advanced Filters
+                                                </button>
+                                            </h2>
+                                            <div id="advancedFilters" class="accordion-collapse collapse" data-bs-parent="#filtersAccordion">
+                                                <div class="accordion-body px-0">
+                                                    <!-- SMA10 Filter -->
+                                                    <div class="mb-3">
+                                                        <div class="form-check form-switch mb-2">
+                                                            <input class="form-check-input" type="checkbox" id="enableSma10Filter">
+                                                            <label class="form-check-label small" for="enableSma10Filter">
+                                                                SMA10 Entry Filter
+                                                            </label>
+                                                        </div>
+                                                        <div id="sma10FilterControls" class="d-none">
+                                                            <input type="range" class="form-range" id="maxSma10Distance" min="5" max="30" value="15" step="1">
+                                                            <div class="d-flex justify-content-between">
+                                                                <span class="text-muted small">5%</span>
+                                                                <span id="maxSma10Display" class="badge bg-warning text-dark">Max +15%</span>
+                                                                <span class="text-muted small">30%</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <!-- RSI Filter -->
+                                                    <div class="mb-3">
+                                                        <div class="form-check form-switch mb-2">
+                                                            <input class="form-check-input" type="checkbox" id="enableRsiFilter">
+                                                            <label class="form-check-label small" for="enableRsiFilter">
+                                                                RSI Filter (avoid overbought)
+                                                            </label>
+                                                        </div>
+                                                        <div id="rsiFilterControls" class="d-none">
+                                                            <input type="range" class="form-range" id="maxRsi" min="50" max="90" value="70" step="5">
+                                                            <div class="d-flex justify-content-between">
+                                                                <span class="text-muted small">50</span>
+                                                                <span id="maxRsiDisplay" class="badge bg-info">RSI < 70</span>
+                                                                <span class="text-muted small">90</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <!-- Volume Filter -->
+                                                    <div class="mb-3">
+                                                        <div class="form-check form-switch mb-2">
+                                                            <input class="form-check-input" type="checkbox" id="enableVolumeFilter">
+                                                            <label class="form-check-label small" for="enableVolumeFilter">
+                                                                Min Volume Filter
+                                                            </label>
+                                                        </div>
+                                                        <div id="volumeFilterControls" class="d-none">
+                                                            <select class="form-select form-select-sm bg-dark border-secondary" id="minVolume">
+                                                                <option value="100000">100K+</option>
+                                                                <option value="500000" selected>500K+</option>
+                                                                <option value="1000000">1M+</option>
+                                                                <option value="2000000">2M+</option>
+                                                            </select>
+                                                        </div>
+                                                    </div>
+
+                                                    <!-- Sector Diversification -->
+                                                    <div class="mb-3">
+                                                        <div class="form-check form-switch mb-2">
+                                                            <input class="form-check-input" type="checkbox" id="enableDiversification">
+                                                            <label class="form-check-label small" for="enableDiversification">
+                                                                Sector Diversification
+                                                            </label>
+                                                        </div>
+                                                        <div id="diversificationControls" class="d-none">
+                                                            <select class="form-select form-select-sm bg-dark border-secondary" id="maxPerSector">
+                                                                <option value="2">Max 2 per sector</option>
+                                                                <option value="3" selected>Max 3 per sector</option>
+                                                                <option value="4">Max 4 per sector</option>
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Position Size Display -->
+                                    <div class="mb-4 p-3 bg-secondary bg-opacity-10 rounded">
+                                        <div class="d-flex justify-content-between mb-2">
+                                            <span class="text-muted">Position Size:</span>
+                                            <span id="positionSize" class="fw-bold">$1,250</span>
+                                        </div>
+                                        <div class="d-flex justify-content-between">
+                                            <span class="text-muted">Weight per Stock:</span>
+                                            <span id="positionWeight" class="fw-bold">12.5%</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Scan Button -->
+                                    <button type="submit" class="btn btn-success w-100" id="scanBtn" disabled>
+                                        <i class="bi bi-search me-2"></i>Run Scan
+                                    </button>
+                                    <div class="form-text text-center mt-2" id="scanHint">
+                                        Refresh data first to enable scanning
+                                    </div>
+                                </form>
+
+                                <!-- Progress Section -->
+                                <div id="progressSection" class="mt-4 d-none">
+                                    <div class="progress mb-2" style="height: 8px;">
+                                        <div class="progress-bar progress-bar-striped progress-bar-animated bg-success"
+                                             id="progressBar" style="width: 0%"></div>
+                                    </div>
+                                    <p class="text-muted small mb-0" id="progressMessage">Starting scan...</p>
+                                </div>
                             </div>
-                            <p class="text-muted small mb-0" id="progressMessage">Starting scan...</p>
+                        </div>
+
+                        <!-- Summary Card -->
+                        <div class="card bg-dark border-secondary mt-4 d-none" id="summaryCard">
+                            <div class="card-header bg-secondary bg-opacity-25">
+                                <h5 class="mb-0"><i class="bi bi-bar-chart me-2"></i>Scan Summary</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row g-3">
+                                    <div class="col-6">
+                                        <div class="text-muted small">Scanned</div>
+                                        <div class="fs-5 fw-bold" id="summaryScanned">-</div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="text-muted small">Quality Filter</div>
+                                        <div class="fs-5 fw-bold" id="summaryFiltered">-</div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="text-muted small">Invested</div>
+                                        <div class="fs-5 fw-bold text-success" id="summaryInvested">-</div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="text-muted small">Cash Left</div>
+                                        <div class="fs-5 fw-bold text-warning" id="summaryCash">-</div>
+                                    </div>
+                                </div>
+                                <!-- Risk Metrics -->
+                                <hr class="my-3">
+                                <div class="row g-2" id="riskMetrics">
+                                    <div class="col-6">
+                                        <div class="text-muted small">Sharpe Ratio</div>
+                                        <div class="fw-bold" id="sharpeRatio">-</div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="text-muted small">Portfolio Beta</div>
+                                        <div class="fw-bold" id="portfolioBeta">-</div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="text-muted small">Max Drawdown</div>
+                                        <div class="fw-bold text-danger" id="maxDrawdown">-</div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="text-muted small">VaR (95%)</div>
+                                        <div class="fw-bold" id="var95">-</div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Summary Card -->
-                <div class="card bg-dark border-secondary mt-4 d-none" id="summaryCard">
-                    <div class="card-header bg-secondary bg-opacity-25">
-                        <h5 class="mb-0"><i class="bi bi-bar-chart me-2"></i>Scan Summary</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="row g-3">
-                            <div class="col-6">
-                                <div class="text-muted small">Scanned</div>
-                                <div class="fs-5 fw-bold" id="summaryScanned">-</div>
+                    <!-- Right Panel - Results -->
+                    <div class="col-lg-9">
+                        <!-- Charts Row -->
+                        <div class="row mb-4 d-none" id="chartsRow">
+                            <div class="col-md-6">
+                                <div class="card bg-dark border-secondary h-100">
+                                    <div class="card-header bg-secondary bg-opacity-25">
+                                        <h6 class="mb-0">Portfolio Allocation</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <canvas id="allocationChart"></canvas>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="col-6">
-                                <div class="text-muted small">Quality Filter</div>
-                                <div class="fs-5 fw-bold" id="summaryFiltered">-</div>
+                            <div class="col-md-6">
+                                <div class="card bg-dark border-secondary h-100">
+                                    <div class="card-header bg-secondary bg-opacity-25">
+                                        <h6 class="mb-0">HQM Scores</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <canvas id="hqmChart"></canvas>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="col-6">
-                                <div class="text-muted small">Invested</div>
-                                <div class="fs-5 fw-bold text-success" id="summaryInvested">-</div>
+                        </div>
+
+                        <!-- Results Table -->
+                        <div class="card bg-dark border-secondary">
+                            <div class="card-header bg-secondary bg-opacity-25 d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0"><i class="bi bi-table me-2"></i>HQM Portfolio</h5>
+                                <div>
+                                    <button class="btn btn-outline-info btn-sm me-2 d-none" id="addAllToWatchlistBtn" title="Add all to watchlist">
+                                        <i class="bi bi-eye-fill me-1"></i>Watch All
+                                    </button>
+                                    <button class="btn btn-outline-primary btn-sm d-none" id="exportBtn">
+                                        <i class="bi bi-download me-1"></i>Export CSV
+                                    </button>
+                                </div>
                             </div>
-                            <div class="col-6">
-                                <div class="text-muted small">Cash Left</div>
-                                <div class="fs-5 fw-bold text-warning" id="summaryCash">-</div>
+                            <div class="card-body p-0">
+                                <!-- Empty State -->
+                                <div id="emptyState" class="text-center py-5">
+                                    <i class="bi bi-graph-up display-1 text-muted mb-3"></i>
+                                    <h5 class="text-muted">No scan results yet</h5>
+                                    <p class="text-muted">
+                                        1. Click <strong>Refresh</strong> to fetch stock data<br>
+                                        2. Configure settings and click <strong>Run Scan</strong>
+                                    </p>
+                                </div>
+
+                                <!-- Results Table -->
+                                <div class="table-responsive d-none" id="resultsTable">
+                                    <table class="table table-dark table-hover mb-0 sortable-table">
+                                        <thead class="table-secondary">
+                                            <tr>
+                                                <th>#</th>
+                                                <th class="sortable" data-sort="ticker">Ticker</th>
+                                                <th class="sortable" data-sort="price">Price</th>
+                                                <th class="sortable" data-sort="hqm">HQM Score</th>
+                                                <th class="sortable" data-sort="sma10">SMA10</th>
+                                                <th class="sortable" data-sort="rsi">RSI</th>
+                                                <th class="sortable" data-sort="sector">Sector</th>
+                                                <th class="sortable" data-sort="return1m">1M</th>
+                                                <th class="sortable" data-sort="return3m">3M</th>
+                                                <th class="sortable" data-sort="return6m">6M</th>
+                                                <th class="sortable" data-sort="return1y">1Y</th>
+                                                <th>Shares</th>
+                                                <th>Value</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="resultsBody">
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Momentum Legend -->
+                        <div class="card bg-dark border-secondary mt-4 d-none" id="legendCard">
+                            <div class="card-body py-2">
+                                <div class="d-flex align-items-center justify-content-center gap-4 small">
+                                    <span><i class="bi bi-circle-fill text-success me-1"></i> &gt;75th pct</span>
+                                    <span><i class="bi bi-circle-fill text-primary me-1"></i> 50-75th pct</span>
+                                    <span><i class="bi bi-circle-fill text-warning me-1"></i> 25-50th pct</span>
+                                    <span><i class="bi bi-circle-fill text-secondary me-1"></i> &lt;25th pct</span>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Right Panel - Results -->
-            <div class="col-lg-9">
-                <!-- Charts Row -->
-                <div class="row mb-4 d-none" id="chartsRow">
-                    <div class="col-md-6">
-                        <div class="card bg-dark border-secondary h-100">
+            <!-- Watchlist Tab -->
+            <div class="tab-pane fade" id="watchlist" role="tabpanel">
+                <div class="row">
+                    <div class="col-lg-4 mb-4">
+                        <div class="card bg-dark border-secondary">
                             <div class="card-header bg-secondary bg-opacity-25">
-                                <h6 class="mb-0">Portfolio Allocation</h6>
+                                <h5 class="mb-0"><i class="bi bi-plus-circle me-2"></i>Add to Watchlist</h5>
                             </div>
                             <div class="card-body">
-                                <canvas id="allocationChart"></canvas>
+                                <form id="addWatchlistForm">
+                                    <div class="mb-3">
+                                        <label class="form-label">Ticker</label>
+                                        <input type="text" class="form-control bg-dark border-secondary" id="watchlistTicker" placeholder="e.g., AAPL" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Target Entry Price (optional)</label>
+                                        <input type="number" class="form-control bg-dark border-secondary" id="watchlistTargetPrice" step="0.01">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Notes (optional)</label>
+                                        <textarea class="form-control bg-dark border-secondary" id="watchlistNotes" rows="2"></textarea>
+                                    </div>
+                                    <button type="submit" class="btn btn-success w-100">
+                                        <i class="bi bi-plus me-1"></i>Add to Watchlist
+                                    </button>
+                                </form>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-6">
-                        <div class="card bg-dark border-secondary h-100">
+                    <div class="col-lg-8">
+                        <div class="card bg-dark border-secondary">
                             <div class="card-header bg-secondary bg-opacity-25">
-                                <h6 class="mb-0">HQM Scores</h6>
+                                <h5 class="mb-0"><i class="bi bi-eye me-2"></i>Your Watchlist</h5>
                             </div>
-                            <div class="card-body">
-                                <canvas id="hqmChart"></canvas>
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table table-dark table-hover mb-0">
+                                        <thead class="table-secondary">
+                                            <tr>
+                                                <th>Ticker</th>
+                                                <th>Current Price</th>
+                                                <th>Target Price</th>
+                                                <th>1M Return</th>
+                                                <th>Sector</th>
+                                                <th>Added</th>
+                                                <th>Notes</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="watchlistBody">
+                                            <tr><td colspan="8" class="text-center text-muted py-4">No items in watchlist</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
+            </div>
 
-                <!-- Results Table -->
-                <div class="card bg-dark border-secondary">
-                    <div class="card-header bg-secondary bg-opacity-25 d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0"><i class="bi bi-table me-2"></i>HQM Portfolio</h5>
-                        <button class="btn btn-outline-primary btn-sm d-none" id="exportBtn">
-                            <i class="bi bi-download me-1"></i>Export CSV
-                        </button>
-                    </div>
-                    <div class="card-body p-0">
-                        <!-- Empty State -->
-                        <div id="emptyState" class="text-center py-5">
-                            <i class="bi bi-graph-up display-1 text-muted mb-3"></i>
-                            <h5 class="text-muted">No scan results yet</h5>
-                            <p class="text-muted">
-                                1. Click <strong>Refresh</strong> to fetch stock data<br>
-                                2. Configure settings and click <strong>Run Scan</strong>
-                            </p>
+            <!-- Portfolio Tab -->
+            <div class="tab-pane fade" id="portfolio" role="tabpanel">
+                <div class="row">
+                    <div class="col-lg-4 mb-4">
+                        <!-- Portfolio Summary -->
+                        <div class="card bg-dark border-secondary mb-4">
+                            <div class="card-header bg-secondary bg-opacity-25">
+                                <h5 class="mb-0"><i class="bi bi-wallet2 me-2"></i>Portfolio Summary</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row g-3">
+                                    <div class="col-6">
+                                        <div class="text-muted small">Total Value</div>
+                                        <div class="fs-4 fw-bold" id="portfolioValue">$0</div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="text-muted small">Total P&L</div>
+                                        <div class="fs-4 fw-bold" id="portfolioPnl">$0</div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="text-muted small">Positions</div>
+                                        <div class="fw-bold" id="portfolioCount">0</div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="text-muted small">Win Rate</div>
+                                        <div class="fw-bold" id="portfolioWinRate">0%</div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-
-                        <!-- Results Table -->
-                        <div class="table-responsive d-none" id="resultsTable">
-                            <table class="table table-dark table-hover mb-0">
-                                <thead class="table-secondary">
-                                    <tr>
-                                        <th>#</th>
-                                        <th>Ticker</th>
-                                        <th>Price</th>
-                                        <th>HQM Score</th>
-                                        <th>SMA10</th>
-                                        <th>1M</th>
-                                        <th>3M</th>
-                                        <th>6M</th>
-                                        <th>1Y</th>
-                                        <th>Shares</th>
-                                        <th>Value</th>
-                                        <th>Weight</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="resultsBody">
-                                </tbody>
-                            </table>
+                        <!-- Add Position -->
+                        <div class="card bg-dark border-secondary">
+                            <div class="card-header bg-secondary bg-opacity-25">
+                                <h5 class="mb-0"><i class="bi bi-plus-circle me-2"></i>Add Position</h5>
+                            </div>
+                            <div class="card-body">
+                                <form id="addPositionForm">
+                                    <div class="mb-3">
+                                        <label class="form-label">Ticker</label>
+                                        <input type="text" class="form-control bg-dark border-secondary" id="positionTicker" required>
+                                    </div>
+                                    <div class="row mb-3">
+                                        <div class="col-6">
+                                            <label class="form-label">Shares</label>
+                                            <input type="number" class="form-control bg-dark border-secondary" id="positionShares" min="1" required>
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label">Entry Price</label>
+                                            <input type="number" class="form-control bg-dark border-secondary" id="positionPrice" step="0.01" required>
+                                        </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Entry Date</label>
+                                        <input type="date" class="form-control bg-dark border-secondary" id="positionDate">
+                                    </div>
+                                    <button type="submit" class="btn btn-success w-100">
+                                        <i class="bi bi-plus me-1"></i>Add Position
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-8">
+                        <div class="card bg-dark border-secondary">
+                            <div class="card-header bg-secondary bg-opacity-25 d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0"><i class="bi bi-list-ul me-2"></i>Positions</h5>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="showClosedPositions">
+                                    <label class="form-check-label small" for="showClosedPositions">Show closed</label>
+                                </div>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table table-dark table-hover mb-0">
+                                        <thead class="table-secondary">
+                                            <tr>
+                                                <th>Ticker</th>
+                                                <th>Shares</th>
+                                                <th>Entry</th>
+                                                <th>Current</th>
+                                                <th>P&L</th>
+                                                <th>P&L %</th>
+                                                <th>Value</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="portfolioBody">
+                                            <tr><td colspan="8" class="text-center text-muted py-4">No positions</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
+            </div>
 
-                <!-- Momentum Legend -->
-                <div class="card bg-dark border-secondary mt-4 d-none" id="legendCard">
-                    <div class="card-body py-2">
-                        <div class="d-flex align-items-center justify-content-center gap-4 small">
-                            <span><i class="bi bi-circle-fill text-success me-1"></i> &gt;75th percentile</span>
-                            <span><i class="bi bi-circle-fill text-primary me-1"></i> 50-75th percentile</span>
-                            <span><i class="bi bi-circle-fill text-warning me-1"></i> 25-50th percentile</span>
-                            <span><i class="bi bi-circle-fill text-secondary me-1"></i> &lt;25th percentile</span>
+            <!-- Sectors Tab -->
+            <div class="tab-pane fade" id="sectors" role="tabpanel">
+                <div class="row">
+                    <div class="col-lg-6 mb-4">
+                        <div class="card bg-dark border-secondary h-100">
+                            <div class="card-header bg-secondary bg-opacity-25">
+                                <h5 class="mb-0"><i class="bi bi-pie-chart me-2"></i>Sector Distribution</h5>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="sectorChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-6 mb-4">
+                        <div class="card bg-dark border-secondary h-100">
+                            <div class="card-header bg-secondary bg-opacity-25">
+                                <h5 class="mb-0"><i class="bi bi-bar-chart me-2"></i>Sector Performance</h5>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table table-dark table-hover mb-0">
+                                        <thead class="table-secondary">
+                                            <tr>
+                                                <th>Sector</th>
+                                                <th>Count</th>
+                                                <th>Avg 1M</th>
+                                                <th>Avg 3M</th>
+                                                <th>Avg 6M</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="sectorTableBody">
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Backtest Tab -->
+            <div class="tab-pane fade" id="backtest" role="tabpanel">
+                <div class="row">
+                    <div class="col-lg-4 mb-4">
+                        <div class="card bg-dark border-secondary">
+                            <div class="card-header bg-secondary bg-opacity-25">
+                                <h5 class="mb-0"><i class="bi bi-gear me-2"></i>Backtest Settings</h5>
+                            </div>
+                            <div class="card-body">
+                                <form id="backtestForm">
+                                    <div class="row mb-3">
+                                        <div class="col-6">
+                                            <label class="form-label">Start Date</label>
+                                            <input type="date" class="form-control bg-dark border-secondary" id="backtestStart">
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label">End Date</label>
+                                            <input type="date" class="form-control bg-dark border-secondary" id="backtestEnd">
+                                        </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Initial Capital</label>
+                                        <input type="number" class="form-control bg-dark border-secondary" id="backtestCapital" value="10000">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Positions</label>
+                                        <input type="number" class="form-control bg-dark border-secondary" id="backtestPositions" value="8" min="3" max="15">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Rebalance Frequency</label>
+                                        <select class="form-select bg-dark border-secondary" id="backtestFrequency">
+                                            <option value="weekly" selected>Weekly</option>
+                                            <option value="monthly">Monthly</option>
+                                        </select>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary w-100" id="backtestBtn">
+                                        <i class="bi bi-play me-1"></i>Run Backtest
+                                    </button>
+                                </form>
+                                <!-- Backtest Progress -->
+                                <div id="backtestProgress" class="mt-3 d-none">
+                                    <div class="progress mb-2" style="height: 6px;">
+                                        <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+                                             id="backtestProgressBar" style="width: 0%"></div>
+                                    </div>
+                                    <p class="text-muted small mb-0" id="backtestMessage">Running...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-8">
+                        <!-- Backtest Results -->
+                        <div class="card bg-dark border-secondary mb-4" id="backtestResultsCard" style="display: none;">
+                            <div class="card-header bg-secondary bg-opacity-25">
+                                <h5 class="mb-0"><i class="bi bi-graph-up me-2"></i>Backtest Results</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row g-3 mb-4">
+                                    <div class="col-md-3">
+                                        <div class="text-muted small">Total Return</div>
+                                        <div class="fs-4 fw-bold" id="btTotalReturn">-</div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="text-muted small">Sharpe Ratio</div>
+                                        <div class="fs-4 fw-bold" id="btSharpe">-</div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="text-muted small">Max Drawdown</div>
+                                        <div class="fs-4 fw-bold text-danger" id="btDrawdown">-</div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="text-muted small">Win Rate</div>
+                                        <div class="fs-4 fw-bold" id="btWinRate">-</div>
+                                    </div>
+                                </div>
+                                <canvas id="backtestChart"></canvas>
+                            </div>
+                        </div>
+                        <!-- Backtest History -->
+                        <div class="card bg-dark border-secondary">
+                            <div class="card-header bg-secondary bg-opacity-25">
+                                <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>Backtest History</h5>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table table-dark table-hover mb-0">
+                                        <thead class="table-secondary">
+                                            <tr>
+                                                <th>Date</th>
+                                                <th>Period</th>
+                                                <th>Return</th>
+                                                <th>Sharpe</th>
+                                                <th>Drawdown</th>
+                                                <th>Trades</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="backtestHistoryBody">
+                                            <tr><td colspan="6" class="text-center text-muted py-4">No backtest history</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -274,9 +702,34 @@
         </div>
     </div>
 
+    <!-- Close Position Modal -->
+    <div class="modal fade" id="closePositionModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content bg-dark">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title">Close Position</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Closing position: <strong id="closePositionTicker"></strong></p>
+                    <div class="mb-3">
+                        <label class="form-label">Exit Price</label>
+                        <input type="number" class="form-control bg-dark border-secondary" id="exitPrice" step="0.01" required>
+                    </div>
+                    <input type="hidden" id="closePositionId">
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="confirmClosePosition">Close Position</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Footer -->
     <footer class="text-center py-3 text-muted border-top border-secondary mt-4">
-        <small>HQM Strategy - Multi-timeframe momentum analysis | Data cached in SQLite for fast scans</small>
+        <small>HQM Strategy - Multi-timeframe momentum analysis | Data cached in SQLite |
+        <a href="https://github.com/anthropics/claude-code" target="_blank" class="text-muted">Built with Claude Code</a></small>
     </footer>
 
     <!-- Bootstrap JS -->
