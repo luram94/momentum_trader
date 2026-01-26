@@ -151,9 +151,8 @@ class ExportConfig:
 class WebConfig:
     """Web application configuration."""
     host: str = '0.0.0.0'
-    port: int = 5000
+    port: int = 8501
     debug: bool = False
-    secret_key: str = 'change-this-in-production'
     poll_interval_ms: int = 300
 
 

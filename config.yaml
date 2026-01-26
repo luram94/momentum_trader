@@ -92,12 +92,11 @@ export:
   csv_filename: 'hqm_portfolio.csv'
   include_charts: true
 
-# Web Application Settings
+# Web Application Settings (legacy - kept for config loader compatibility)
 web:
   host: '0.0.0.0'
-  port: 5000
+  port: 8501
   debug: false
-  secret_key: 'change-this-in-production'
   poll_interval_ms: 300       # Status polling interval
 
 # Logging Settings

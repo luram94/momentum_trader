@@ -2,6 +2,8 @@
 
 A comprehensive web application implementing the **High Quality Momentum (HQM) investment strategy**, inspired by Qullamaggie's quantitative trading approach. It identifies stocks showing consistent "slow and steady" momentum across multiple timeframes, with advanced features for backtesting, risk analysis, and portfolio management.
 
+**Live Demo**: [momentumtrader.streamlit.app](https://momentumtrader.streamlit.app)
+
 ## Strategy Overview
 
 The HQM strategy differentiates between:
@@ -41,46 +43,19 @@ By requiring consistency across all timeframes, the strategy filters out stocks 
 - **Portfolio Tracking**: Log positions and monitor P&L
 - **Sector Analysis**: Performance breakdown by sector
 
-### User Interface
-- **5 Navigation Tabs**: Scanner, Watchlist, Portfolio, Sectors, Backtest
-- **Light/Dark Theme**: Toggle with persistent preference
-- **Sortable Tables**: Click headers to sort any column
-- **TradingView Integration**: Direct links to stock charts
-- **CSV/Excel Export**: Download scan results
-
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Backend | Python 3.11, Flask, Gunicorn |
+| Frontend | Streamlit, Plotly |
 | Database | SQLite |
-| Frontend | HTML5, Bootstrap 5, Chart.js |
 | Data APIs | FinViz, yfinance |
 | Data Science | Pandas, NumPy, SciPy |
-| Technical Analysis | TA-Lib |
-| Containerization | Docker, Docker Compose |
-| Testing | pytest, pytest-cov |
-| Type Checking | mypy |
+| Hosting | Streamlit Cloud |
 
 ## Installation
 
-### Option 1: Docker (Recommended)
-
-```bash
-# Clone the repository
-git clone <repository-url>
-cd momentum_trader
-
-# Start with Docker Compose
-docker compose up -d
-
-# View logs
-docker logs -f hqm-momentum-scanner
-```
-
-Access at `http://localhost:5000`
-
-### Option 2: Local Installation
+### Local Development
 
 ```bash
 # Clone the repository
@@ -96,8 +71,10 @@ source venv/bin/activate  # Linux/Mac
 pip install -r requirements.txt
 
 # Run the application
-python app.py
+streamlit run streamlit_app.py
 ```
+
+Access at `http://localhost:8501`
 
 ## Usage
 
@@ -111,7 +88,7 @@ python app.py
 
 ### Backtesting
 
-1. Go to the **Backtest** tab
+1. Go to the **Backtest** page
 2. Select date range and parameters
 3. Click "Run Backtest"
 4. Review performance metrics and equity curve
@@ -154,56 +131,20 @@ backtest:
   commission_per_trade: 0
 ```
 
-## API Endpoints
-
-### Data Management
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/data-status` | GET | Current data age & stock count |
-| `/api/refresh` | POST | Fetch fresh data from FinViz |
-| `/api/config` | GET | Get current configuration |
-
-### Scanning
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/scan` | POST | Run HQM scan with parameters |
-| `/api/status` | GET | Get operation progress |
-| `/api/results` | GET | Fetch latest scan results |
-| `/api/history` | GET | Get scan history |
-
-### Watchlist
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/watchlist` | GET | Get all watchlist items |
-| `/api/watchlist` | POST | Add ticker to watchlist |
-| `/api/watchlist/<ticker>` | DELETE | Remove from watchlist |
-
-### Portfolio
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/portfolio` | GET | Get all positions |
-| `/api/portfolio` | POST | Add new position |
-| `/api/portfolio/<id>/close` | POST | Close a position |
-
-### Analytics
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/sectors` | GET | Sector performance breakdown |
-| `/api/risk-metrics` | POST | Calculate portfolio risk metrics |
-| `/api/stock-metrics/<ticker>` | GET | Individual stock metrics |
-
-### Backtesting
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/backtest` | POST | Run backtest simulation |
-| `/api/backtest/results` | GET | Get latest backtest results |
-| `/api/backtest/history` | GET | Get backtest history |
-
 ## Project Structure
 
 ```
 momentum_trader/
-├── app.py                 # Flask server & API endpoints
+├── streamlit_app.py       # Main entry point
+├── pages/
+│   ├── 1_Scanner.py       # HQM scanner with filters
+│   ├── 2_Watchlist.py     # Watchlist management
+│   ├── 3_Portfolio.py     # Portfolio tracking
+│   ├── 4_Sectors.py       # Sector analysis
+│   └── 5_Backtest.py      # Backtesting
+├── components/
+│   ├── charts.py          # Plotly chart helpers
+│   └── state.py           # Session state management
 ├── momentum.py            # Core HQM strategy algorithm
 ├── database.py            # SQLite database management
 ├── backtest.py            # Backtesting engine
@@ -212,17 +153,8 @@ momentum_trader/
 ├── logger.py              # Centralized logging
 ├── config.yaml            # Externalized configuration
 ├── requirements.txt       # Python dependencies
-├── Dockerfile             # Multi-stage Docker build
-├── docker-compose.yml     # Container orchestration
-├── pytest.ini             # Test configuration
-├── templates/
-│   └── index.html         # Web UI template (5 tabs)
-├── static/
-│   ├── js/app.js          # Frontend logic
-│   └── css/style.css      # Light/Dark theme styling
-├── tests/
-│   ├── __init__.py
-│   └── test_hqm.py        # Unit tests
+├── .streamlit/
+│   └── config.toml        # Streamlit theme configuration
 └── data/
     └── hqm_data.db        # SQLite database (auto-generated)
 ```
@@ -272,40 +204,6 @@ pytest --cov=. --cov-report=html
 pytest tests/test_hqm.py -v
 ```
 
-## Docker Commands
-
-```bash
-# Start in background
-docker compose up -d
-
-# View logs
-docker logs -f hqm-momentum-scanner
-
-# Stop
-docker compose down
-
-# Rebuild after code changes
-docker compose up -d --build
-
-# Development mode (with hot reload)
-docker compose --profile dev up hqm-scanner-dev
-```
-
-## Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `FLASK_ENV` | production | Flask environment |
-| `FLASK_DEBUG` | 0 | Enable debug mode |
-| `PYTHONUNBUFFERED` | 1 | Unbuffered output |
-
-## Performance Tips
-
-1. **Initial Data Load**: First refresh takes 3-5 minutes (fetching ~2000 stocks)
-2. **Subsequent Scans**: Use cached data if <24 hours old
-3. **Backtesting**: Large universes may take several minutes
-4. **Docker**: Uses multi-stage build for smaller image size
-
 ## License
 
 MIT License
@@ -314,4 +212,3 @@ MIT License
 
 - Strategy inspired by [Qullamaggie](https://qullamaggie.com/) momentum trading approach
 - Data provided by [FinViz](https://finviz.com/) and [Yahoo Finance](https://finance.yahoo.com/)
-- Technical analysis powered by [TA-Lib](https://github.com/bukosabino/ta)
