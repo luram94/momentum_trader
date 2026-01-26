@@ -1,16 +1,75 @@
-# Bases de datos
+# Databases
 *.db
 *.sqlite
 *.sqlite3
 
-# Archivos de Excel
+# Excel exports
 *.xlsx
 *.xls
+
+# CSV exports
+hqm_portfolio*.csv
 
 # Python
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Claude
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Claude Code
 .claude/
+
+# Logs
+*.log
+hqm_scanner.log*
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Type checking
+.mypy_cache/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# OS files
+.DS_Store
+Thumbs.db

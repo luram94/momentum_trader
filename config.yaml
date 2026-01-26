@@ -1,0 +1,135 @@
+# HQM Momentum Scanner Configuration
+# =====================================
+# Externalized settings for easy customization
+
+# Portfolio Settings
+portfolio:
+  default_size: 10000          # Default portfolio size in USD
+  default_positions: 8         # Default number of positions (7-10 recommended)
+  min_size: 1000              # Minimum portfolio size
+  max_positions: 50           # Maximum positions allowed
+
+# Data Collection Settings
+data:
+  exchanges:
+    - NYSE
+    - NASDAQ
+  min_market_cap: '+Mid (over $2bln)'  # FinViz filter string
+  cache_expiry_hours: 24      # Consider data stale after this many hours
+
+# HQM Strategy Settings
+strategy:
+  min_percentile_threshold: 25  # Minimum percentile in ANY timeframe
+  timeframes:
+    - 1M
+    - 3M
+    - 6M
+    - 1Y
+
+# Technical Indicators
+indicators:
+  sma:
+    period: 10                # SMA period for entry timing
+    good_threshold: 5         # Green zone: <= 5% above SMA
+    moderate_threshold: 15    # Yellow zone: 5-15% above SMA
+    # Red zone: > 15% above SMA
+
+  rsi:
+    enabled: true
+    period: 14
+    overbought: 70            # Exclude stocks with RSI > this
+    oversold: 30              # Flag stocks with RSI < this
+
+  volume:
+    enabled: true
+    min_avg_volume: 500000    # Minimum average daily volume
+    volume_surge_threshold: 1.5  # Flag if current volume > 1.5x average
+
+  volatility:
+    enabled: true
+    atr_period: 14
+    max_atr_percent: 10       # Maximum ATR as % of price
+
+# Sector Settings
+sectors:
+  diversification:
+    enabled: true
+    max_per_sector: 3         # Maximum positions per sector
+  excluded_sectors: []        # Sectors to exclude (e.g., ['Utilities', 'Real Estate'])
+
+# Risk Metrics
+risk:
+  benchmark: SPY              # Benchmark for beta calculation
+  risk_free_rate: 0.05        # Annual risk-free rate (5%)
+  sharpe_period_days: 252     # Trading days for annualized Sharpe
+
+# Backtesting Settings
+backtest:
+  default_period_days: 90     # Default backtest period
+  initial_capital: 10000
+  rebalance_frequency: weekly # daily, weekly, monthly
+  include_dividends: false
+  slippage_percent: 0.1       # 0.1% slippage per trade
+  commission_per_trade: 0     # Commission per trade in USD
+
+# Watchlist & Alerts
+watchlist:
+  max_items: 50
+  alerts:
+    email_enabled: false
+    email_address: ''
+    sma_entry_threshold: 5    # Alert when stock drops to within 5% of SMA10
+
+# Portfolio Tracking
+tracking:
+  enabled: true
+  auto_save: true
+  history_days: 365           # Keep tracking history for this many days
+
+# Export Settings
+export:
+  excel_filename: 'hqm_portfolio.xlsx'
+  csv_filename: 'hqm_portfolio.csv'
+  include_charts: true
+
+# Web Application Settings
+web:
+  host: '0.0.0.0'
+  port: 5000
+  debug: false
+  secret_key: 'change-this-in-production'
+  poll_interval_ms: 300       # Status polling interval
+
+# Logging Settings
+logging:
+  level: INFO                 # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+  file: 'hqm_scanner.log'
+  max_size_mb: 10
+  backup_count: 3
+  console_output: true
+
+# API Rate Limiting
+rate_limits:
+  finviz_delay_seconds: 1     # Delay between FinViz requests
+  yfinance_batch_size: 50     # Batch size for yfinance downloads
+  max_retries: 3              # Max retries on API failure
+  retry_delay_seconds: 5      # Delay between retries
+
+# Database Settings
+database:
+  path: 'data/hqm_data.db'
+  backup_enabled: true
+  backup_frequency: daily     # daily, weekly
+  vacuum_on_startup: false    # Run VACUUM on startup
+
+# Theme Settings
+theme:
+  default: 'dark'             # 'dark' or 'light'
+  colors:
+    primary: '#198754'
+    success: '#20c997'
+    warning: '#ffc107'
+    danger: '#dc3545'
+    background_dark: '#0d1117'
+    background_light: '#ffffff'
