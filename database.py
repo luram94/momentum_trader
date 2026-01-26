@@ -33,8 +33,30 @@ logger = get_logger('database')
 # Get config
 config = get_config()
 
-# Database file path
-DB_PATH = Path(__file__).parent / config.database.path
+# Database file path - dynamic for Streamlit Cloud compatibility
+def get_db_path() -> Path:
+    """
+    Get database path, handling both local and Streamlit Cloud environments.
+
+    Returns:
+        Path to the SQLite database file.
+    """
+    import os
+
+    # Check for Streamlit Cloud environment
+    if os.environ.get('STREAMLIT_SHARING_MODE'):
+        # Use /tmp for Streamlit Cloud (ephemeral storage)
+        db_dir = Path('/tmp/hqm_data')
+        db_dir.mkdir(parents=True, exist_ok=True)
+        return db_dir / 'hqm_data.db'
+
+    # Local development - use configured path
+    db_path = Path(__file__).parent / config.database.path
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    return db_path
+
+
+DB_PATH = get_db_path()
 
 
 def get_connection() -> sqlite3.Connection:

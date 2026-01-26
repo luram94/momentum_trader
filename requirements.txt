@@ -7,8 +7,9 @@ scipy>=1.7.0
 finvizfinance>=0.14.0
 yfinance>=0.2.0
 
-# Web framework
-flask>=2.0.0
+# Web framework (Streamlit)
+streamlit>=1.28.0
+plotly>=5.18.0
 
 # Export
 xlsxwriter>=3.0.0
@@ -31,12 +32,6 @@ ta>=0.10.0
 
 # Rate limiting
 ratelimit>=2.2.1
-
-# Docker support (for containerization)
-gunicorn>=21.0.0
-
-# Scheduling (for automated scans)
-apscheduler>=3.10.0
 
 # HTTP client (for API calls)
 requests>=2.28.0

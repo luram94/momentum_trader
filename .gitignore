@@ -62,8 +62,8 @@ htmlcov/
 # Type checking
 .mypy_cache/
 
-# Docker
-.docker/
+# Streamlit
+.streamlit/secrets.toml
 
 # Environment variables
 .env
