@@ -38,7 +38,11 @@ def execute_backtest(
     end_date: str,
     initial_capital: float,
     num_positions: int,
-    rebalance_frequency: str
+    rebalance_frequency: str,
+    use_stop_loss: bool = True,
+    partial_exit_pct: float = 0.5,
+    partial_exit_days: int = 4,
+    trailing_ma_period: int = 10
 ):
     """Execute backtest with progress display."""
     progress_bar = st.progress(0)
@@ -56,6 +60,10 @@ def execute_backtest(
             num_positions=num_positions,
             rebalance_frequency=rebalance_frequency,
             progress_callback=progress_callback,
+            use_stop_loss=use_stop_loss,
+            partial_exit_pct=partial_exit_pct,
+            partial_exit_days=partial_exit_days,
+            trailing_ma_period=trailing_ma_period,
         )
 
         progress_bar.empty()
@@ -116,6 +124,45 @@ with st.sidebar:
 
         st.divider()
 
+        # Risk Management (Qullamaggie Stops)
+        st.subheader("Risk Management")
+
+        use_stop_loss = st.checkbox(
+            "Enable Qullamaggie Stops",
+            value=True,
+            help="Stop-loss at entry day low (capped at ATR), partial exit after 3-5 days, trailing 10-day MA"
+        )
+
+        if use_stop_loss:
+            partial_exit_pct = st.slider(
+                "Partial Exit %",
+                min_value=33,
+                max_value=50,
+                value=50,
+                help="Sell this percentage of position after holding period (if profitable)"
+            ) / 100
+
+            partial_exit_days = st.slider(
+                "Days Before Partial Exit",
+                min_value=3,
+                max_value=5,
+                value=4,
+                help="Wait this many days before taking partial profits"
+            )
+
+            trailing_ma = st.selectbox(
+                "Trailing MA Period",
+                options=[10, 20],
+                index=0,
+                help="Exit remaining position on first close below this MA"
+            )
+        else:
+            partial_exit_pct = 0.5
+            partial_exit_days = 4
+            trailing_ma = 10
+
+        st.divider()
+
         submitted = st.form_submit_button("Run Backtest", type="primary", use_container_width=True)
 
         if submitted:
@@ -130,6 +177,10 @@ with st.sidebar:
                     initial_capital=initial_capital,
                     num_positions=num_positions,
                     rebalance_frequency=rebalance_frequency,
+                    use_stop_loss=use_stop_loss,
+                    partial_exit_pct=partial_exit_pct,
+                    partial_exit_days=partial_exit_days,
+                    trailing_ma_period=trailing_ma,
                 )
 
                 if results['success']:
@@ -194,6 +245,41 @@ if st.session_state.backtest_results:
     with col4:
         st.metric("Commission Paid", f"${results['total_commission']:,.2f}")
 
+    # Stop-loss metrics (if enabled)
+    if results.get('parameters', {}).get('use_stop_loss', False):
+        st.divider()
+        st.subheader("Risk Management Metrics")
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            st.metric(
+                "Stop-Loss Exits",
+                results.get('stop_loss_exits', 0),
+                help="Positions closed due to initial stop-loss being hit"
+            )
+
+        with col2:
+            st.metric(
+                "Trailing Stop Exits",
+                results.get('trailing_stop_exits', 0),
+                help="Positions closed due to trailing MA stop"
+            )
+
+        with col3:
+            st.metric(
+                "Partial Exits",
+                results.get('partial_exits', 0),
+                help="Partial profit-taking exits after holding period"
+            )
+
+        with col4:
+            st.metric(
+                "Avg Days Held",
+                f"{results.get('avg_days_held', 0):.1f}",
+                help="Average number of days positions were held"
+            )
+
     st.divider()
 
     # Charts
@@ -222,16 +308,31 @@ if st.session_state.backtest_results:
             if 'date' in df_trades.columns:
                 df_trades['date'] = pd.to_datetime(df_trades['date']).dt.strftime('%Y-%m-%d')
 
+            # Build column config based on available columns
+            column_config = {
+                'date': 'Date',
+                'ticker': 'Ticker',
+                'action': 'Action',
+                'shares': 'Shares',
+                'price': st.column_config.NumberColumn('Price', format="$%.2f"),
+                'value': st.column_config.NumberColumn('Value', format="$%.2f"),
+            }
+
+            # Add exit_reason column if present
+            if 'exit_reason' in df_trades.columns:
+                column_config['exit_reason'] = 'Exit Reason'
+
+            # Add profit column if present
+            if 'profit' in df_trades.columns:
+                column_config['profit'] = st.column_config.NumberColumn('Profit', format="$%.2f")
+
+            # Add days_held column if present
+            if 'days_held' in df_trades.columns:
+                column_config['days_held'] = 'Days Held'
+
             st.dataframe(
                 df_trades,
-                column_config={
-                    'date': 'Date',
-                    'ticker': 'Ticker',
-                    'action': 'Action',
-                    'shares': 'Shares',
-                    'price': st.column_config.NumberColumn('Price', format="$%.2f"),
-                    'value': st.column_config.NumberColumn('Value', format="$%.2f"),
-                },
+                column_config=column_config,
                 hide_index=True,
                 use_container_width=True,
             )
@@ -241,7 +342,7 @@ if st.session_state.backtest_results:
         st.divider()
         with st.expander("Backtest Parameters"):
             params = results['parameters']
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
 
             with col1:
                 st.write(f"**Initial Capital:** ${params['initial_capital']:,}")
@@ -251,6 +352,14 @@ if st.session_state.backtest_results:
                 st.write(f"**Rebalance:** {params['rebalance_frequency']}")
                 st.write(f"**Slippage:** {params['slippage_pct']}%")
                 st.write(f"**Commission:** ${params['commission']}")
+
+            with col3:
+                use_stops = params.get('use_stop_loss', False)
+                st.write(f"**Qullamaggie Stops:** {'Enabled' if use_stops else 'Disabled'}")
+                if use_stops:
+                    st.write(f"**Partial Exit:** {int(params.get('partial_exit_pct', 0.5) * 100)}%")
+                    st.write(f"**Partial Exit Days:** {params.get('partial_exit_days', 4)}")
+                    st.write(f"**Trailing MA:** {params.get('trailing_ma_period', 10)}-day")
 
 else:
     # No results yet
@@ -295,6 +404,15 @@ with st.expander("About HQM Backtesting", expanded=False):
     3. **Ranking**: Selects top N stocks by HQM score
     4. **Allocation**: Equal-weight across all positions
     5. **Rebalancing**: Adjusts portfolio at specified frequency
+
+    ### Qullamaggie Stop-Loss Strategy
+
+    When enabled, the backtest uses Kristjan Kullamägi's risk management approach:
+
+    1. **Initial Stop**: Set at the entry day's low, but capped at the 14-day ATR
+    2. **Partial Exit**: After 3-5 days (configurable), sell 33-50% of position if profitable
+    3. **Break-even Stop**: After partial exit, stop moves to entry price
+    4. **Trailing Stop**: Remaining position trails the 10-day MA, exits on first close below
 
     ### Key Assumptions
 
