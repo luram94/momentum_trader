@@ -38,3 +38,6 @@ requests>=2.28.0
 
 # Environment variables
 python-dotenv>=1.0.0
+
+# Authentication & User Database
+supabase>=2.0.0
