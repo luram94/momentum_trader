@@ -34,7 +34,11 @@ class BacktestEngine:
         num_positions: int = 8,
         rebalance_frequency: str = 'weekly',
         slippage_pct: float = 0.1,
-        commission: float = 0
+        commission: float = 0,
+        use_stop_loss: bool = True,
+        partial_exit_pct: float = 0.5,
+        partial_exit_days: int = 4,
+        trailing_ma_period: int = 10
     ):
         """
         Initialize backtest engine.
@@ -45,6 +49,10 @@ class BacktestEngine:
             rebalance_frequency: 'daily', 'weekly', or 'monthly'
             slippage_pct: Slippage as percentage of price
             commission: Commission per trade in dollars
+            use_stop_loss: Enable Qullamaggie-style stop-loss management
+            partial_exit_pct: Percentage of position to sell at partial exit (0.33-0.5)
+            partial_exit_days: Days before partial exit (3-5)
+            trailing_ma_period: Moving average period for trailing stop (10 or 20)
         """
         self.initial_capital = initial_capital
         self.num_positions = num_positions
@@ -52,10 +60,21 @@ class BacktestEngine:
         self.slippage_pct = slippage_pct / 100
         self.commission = commission
 
+        # Qullamaggie stop-loss settings
+        self.use_stop_loss = use_stop_loss
+        self.partial_exit_pct = partial_exit_pct
+        self.partial_exit_days = partial_exit_days
+        self.trailing_ma_period = trailing_ma_period
+
         self.trades: List[Dict[str, Any]] = []
         self.portfolio_history: List[Dict[str, Any]] = []
         self.positions: Dict[str, Dict[str, Any]] = {}
         self.cash = initial_capital
+
+        # Stop-loss tracking metrics
+        self.stop_loss_exits = 0
+        self.trailing_stop_exits = 0
+        self.partial_exits = 0
 
     def _get_rebalance_dates(
         self,
@@ -95,9 +114,9 @@ class BacktestEngine:
         tickers: List[str],
         start_date: str,
         end_date: str
-    ) -> pd.DataFrame:
+    ) -> Dict[str, pd.DataFrame]:
         """
-        Fetch historical price data.
+        Fetch historical OHLC price data.
 
         Args:
             tickers: List of ticker symbols
@@ -105,10 +124,10 @@ class BacktestEngine:
             end_date: End date string
 
         Returns:
-            DataFrame with price data
+            Dict with 'Close', 'High', 'Low' DataFrames
         """
         if not tickers:
-            return pd.DataFrame()
+            return {'Close': pd.DataFrame(), 'High': pd.DataFrame(), 'Low': pd.DataFrame()}
 
         # Limit tickers to avoid timeout (yfinance can struggle with too many)
         max_tickers = 200
@@ -130,41 +149,231 @@ class BacktestEngine:
 
             if data.empty:
                 logger.error("yfinance returned empty data")
-                return pd.DataFrame()
+                return {'Close': pd.DataFrame(), 'High': pd.DataFrame(), 'Low': pd.DataFrame()}
 
             # Handle single ticker case
             if len(tickers) == 1:
-                if 'Adj Close' in data.columns:
-                    prices = data['Adj Close'].to_frame(name=tickers[0])
-                elif 'Close' in data.columns:
-                    prices = data['Close'].to_frame(name=tickers[0])
-                else:
+                close_col = 'Adj Close' if 'Adj Close' in data.columns else 'Close'
+                if close_col not in data.columns:
                     logger.error("No price column found in data")
-                    return pd.DataFrame()
+                    return {'Close': pd.DataFrame(), 'High': pd.DataFrame(), 'Low': pd.DataFrame()}
+
+                close_df = data[close_col].to_frame(name=tickers[0])
+                high_df = data['High'].to_frame(name=tickers[0]) if 'High' in data.columns else close_df.copy()
+                low_df = data['Low'].to_frame(name=tickers[0]) if 'Low' in data.columns else close_df.copy()
             else:
-                if 'Adj Close' in data.columns:
-                    prices = data['Adj Close']
-                elif 'Close' in data.columns:
-                    prices = data['Close']
-                else:
+                close_col = 'Adj Close' if 'Adj Close' in data.columns else 'Close'
+                if close_col not in data.columns:
                     logger.error("No price column found in data")
-                    return pd.DataFrame()
+                    return {'Close': pd.DataFrame(), 'High': pd.DataFrame(), 'Low': pd.DataFrame()}
 
-            # Remove tickers with all NaN values
-            valid_cols = prices.columns[prices.notna().any()]
-            prices = prices[valid_cols]
+                close_df = data[close_col]
+                high_df = data['High'] if 'High' in data.columns else close_df.copy()
+                low_df = data['Low'] if 'Low' in data.columns else close_df.copy()
 
-            logger.info(f"Successfully fetched {len(prices.columns)} tickers with {len(prices)} days of data")
+            # Remove tickers with all NaN values (based on Close)
+            valid_cols = close_df.columns[close_df.notna().any()]
+            close_df = close_df[valid_cols]
+            high_df = high_df[[c for c in valid_cols if c in high_df.columns]]
+            low_df = low_df[[c for c in valid_cols if c in low_df.columns]]
 
-            return prices
+            logger.info(f"Successfully fetched {len(close_df.columns)} tickers with {len(close_df)} days of data")
+
+            return {
+                'Close': close_df,
+                'High': high_df,
+                'Low': low_df
+            }
 
         except Exception as e:
             logger.error(f"Error fetching historical data: {e}")
-            return pd.DataFrame()
+            return {'Close': pd.DataFrame(), 'High': pd.DataFrame(), 'Low': pd.DataFrame()}
+
+    def _calculate_atr(
+        self,
+        ticker: str,
+        ohlc_data: Dict[str, pd.DataFrame],
+        date_idx: int,
+        period: int = 14
+    ) -> float:
+        """
+        Calculate Average True Range for stop-loss sizing.
+
+        Args:
+            ticker: Ticker symbol
+            ohlc_data: Dict with 'Close', 'High', 'Low' DataFrames
+            date_idx: Current date index
+            period: ATR period (default 14)
+
+        Returns:
+            ATR value
+        """
+        if date_idx < period + 1:
+            return 0.0
+
+        try:
+            close = ohlc_data['Close'][ticker].iloc[:date_idx + 1]
+            high = ohlc_data['High'][ticker].iloc[:date_idx + 1]
+            low = ohlc_data['Low'][ticker].iloc[:date_idx + 1]
+
+            # Calculate True Range components
+            tr1 = high - low  # High - Low
+            tr2 = abs(high - close.shift(1))  # |High - prev Close|
+            tr3 = abs(low - close.shift(1))   # |Low - prev Close|
+
+            # True Range is max of the three
+            tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+
+            # ATR is simple moving average of TR
+            atr = tr.iloc[-period:].mean()
+
+            return atr if not pd.isna(atr) else 0.0
+
+        except Exception as e:
+            logger.debug(f"Error calculating ATR for {ticker}: {e}")
+            return 0.0
+
+    def _calculate_ma(
+        self,
+        ticker: str,
+        ohlc_data: Dict[str, pd.DataFrame],
+        date_idx: int,
+        period: int = 10
+    ) -> float:
+        """
+        Calculate simple moving average for trailing stop.
+
+        Args:
+            ticker: Ticker symbol
+            ohlc_data: Dict with 'Close', 'High', 'Low' DataFrames
+            date_idx: Current date index
+            period: MA period (default 10)
+
+        Returns:
+            MA value
+        """
+        if date_idx < period:
+            return 0.0
+
+        try:
+            close = ohlc_data['Close'][ticker].iloc[:date_idx + 1]
+            ma = close.iloc[-period:].mean()
+            return ma if not pd.isna(ma) else 0.0
+
+        except Exception as e:
+            logger.debug(f"Error calculating MA for {ticker}: {e}")
+            return 0.0
+
+    def _close_position(
+        self,
+        ticker: str,
+        price: float,
+        date: datetime,
+        reason: str,
+        shares: Optional[int] = None
+    ) -> None:
+        """
+        Close a position (full or partial).
+
+        Args:
+            ticker: Ticker symbol
+            price: Exit price
+            date: Exit date
+            reason: Exit reason ('rebalance', 'stop_hit', 'trailing_stop', 'partial_exit')
+            shares: Number of shares to sell (None = all)
+        """
+        if ticker not in self.positions:
+            return
+
+        pos = self.positions[ticker]
+        shares_to_sell = shares if shares is not None else pos['shares']
+        exit_price = price * (1 - self.slippage_pct)
+        proceeds = shares_to_sell * exit_price - self.commission
+
+        # Calculate profit for this sale
+        profit = (exit_price - pos['entry_price']) * shares_to_sell
+
+        self.trades.append({
+            'date': date,
+            'ticker': ticker,
+            'action': 'SELL',
+            'shares': shares_to_sell,
+            'price': exit_price,
+            'value': proceeds,
+            'exit_reason': reason,
+            'profit': profit,
+            'days_held': pos.get('days_held', 0)
+        })
+
+        self.cash += proceeds
+
+        if shares is None or shares >= pos['shares']:
+            # Full exit
+            del self.positions[ticker]
+        else:
+            # Partial exit
+            pos['shares'] -= shares_to_sell
+
+    def _manage_positions_daily(
+        self,
+        date: datetime,
+        ohlc_data: Dict[str, pd.DataFrame],
+        date_idx: int
+    ) -> None:
+        """
+        Daily position management for Qullamaggie stop-loss strategy.
+
+        Args:
+            date: Current date
+            ohlc_data: Dict with 'Close', 'High', 'Low' DataFrames
+            date_idx: Current date index
+        """
+        for ticker in list(self.positions.keys()):
+            pos = self.positions[ticker]
+
+            if ticker not in ohlc_data['Close'].columns:
+                continue
+
+            close = ohlc_data['Close'][ticker].iloc[date_idx]
+            if pd.isna(close):
+                continue
+
+            # 1. Check if stop hit
+            stop_price = pos.get('stop_price', 0)
+            if stop_price > 0 and close <= stop_price:
+                exit_reason = 'trailing_stop' if pos.get('stop_type') == 'trailing' else 'stop_hit'
+                self._close_position(ticker, close, date, exit_reason)
+                if exit_reason == 'trailing_stop':
+                    self.trailing_stop_exits += 1
+                else:
+                    self.stop_loss_exits += 1
+                continue
+
+            # 2. Increment days held
+            pos['days_held'] = pos.get('days_held', 0) + 1
+
+            # 3. Partial exit after N days (if profitable)
+            if not pos.get('partial_exit_done', False) and pos['days_held'] >= self.partial_exit_days:
+                if close > pos['entry_price']:
+                    # Calculate shares to sell
+                    shares_to_sell = int(pos['initial_shares'] * self.partial_exit_pct)
+                    if shares_to_sell > 0 and shares_to_sell < pos['shares']:
+                        self._close_position(ticker, close, date, 'partial_exit', shares_to_sell)
+                        pos['stop_price'] = pos['entry_price']  # Move stop to break-even
+                        pos['stop_type'] = 'breakeven'
+                        pos['partial_exit_done'] = True
+                        self.partial_exits += 1
+
+            # 4. Trail with MA (after partial exit)
+            if pos.get('partial_exit_done', False):
+                ma = self._calculate_ma(ticker, ohlc_data, date_idx, self.trailing_ma_period)
+                if ma > 0 and close < ma:
+                    self._close_position(ticker, close, date, 'trailing_stop')
+                    self.trailing_stop_exits += 1
 
     def _calculate_hqm_scores(
         self,
-        prices: pd.DataFrame,
+        ohlc_data: Dict[str, pd.DataFrame],
         date_idx: int,
         min_data_days: int = 63
     ) -> pd.DataFrame:
@@ -172,13 +381,15 @@ class BacktestEngine:
         Calculate HQM scores at a specific point in time.
 
         Args:
-            prices: Historical price data
+            ohlc_data: Dict with 'Close', 'High', 'Low' DataFrames
             date_idx: Index of current date in prices
             min_data_days: Minimum days of data required (default 63 for 3-month returns)
 
         Returns:
             DataFrame with HQM scores
         """
+        prices = ohlc_data['Close']
+
         if date_idx < min_data_days:
             logger.debug(f"Skipping date_idx {date_idx}: need at least {min_data_days} days")
             return pd.DataFrame()
@@ -265,7 +476,7 @@ class BacktestEngine:
         self,
         date: datetime,
         target_positions: Dict[str, float],
-        prices: pd.DataFrame,
+        ohlc_data: Dict[str, pd.DataFrame],
         date_idx: int
     ) -> None:
         """
@@ -274,48 +485,35 @@ class BacktestEngine:
         Args:
             date: Rebalance date
             target_positions: Target positions {ticker: weight}
-            prices: Price data
+            ohlc_data: Dict with 'Close', 'High', 'Low' DataFrames
             date_idx: Current date index
         """
-        current_prices = prices.iloc[date_idx]
+        close_prices = ohlc_data['Close'].iloc[date_idx]
+        low_prices = ohlc_data['Low'].iloc[date_idx]
 
         # Close positions not in target
         for ticker in list(self.positions.keys()):
             if ticker not in target_positions:
-                if ticker in current_prices.index:
-                    exit_price = current_prices[ticker] * (1 - self.slippage_pct)
-                    position = self.positions[ticker]
-                    proceeds = position['shares'] * exit_price - self.commission
-
-                    self.trades.append({
-                        'date': date,
-                        'ticker': ticker,
-                        'action': 'SELL',
-                        'shares': position['shares'],
-                        'price': exit_price,
-                        'value': proceeds
-                    })
-
-                    self.cash += proceeds
-                    del self.positions[ticker]
+                if ticker in close_prices.index:
+                    self._close_position(ticker, close_prices[ticker], date, 'rebalance')
 
         # Calculate portfolio value
         portfolio_value = self.cash
         for ticker, pos in self.positions.items():
-            if ticker in current_prices.index:
-                portfolio_value += pos['shares'] * current_prices[ticker]
+            if ticker in close_prices.index:
+                portfolio_value += pos['shares'] * close_prices[ticker]
 
         # Open/adjust positions
         for ticker, weight in target_positions.items():
-            if ticker not in current_prices.index:
+            if ticker not in close_prices.index:
                 continue
 
             target_value = portfolio_value * weight
-            current_price = current_prices[ticker] * (1 + self.slippage_pct)
+            current_price = close_prices[ticker] * (1 + self.slippage_pct)
 
             if ticker in self.positions:
-                # Adjust existing position
-                current_value = self.positions[ticker]['shares'] * current_prices[ticker]
+                # Adjust existing position (don't modify stop-loss tracking)
+                current_value = self.positions[ticker]['shares'] * close_prices[ticker]
                 diff_value = target_value - current_value
 
                 if abs(diff_value) > 100:  # Only adjust if difference > $100
@@ -325,6 +523,7 @@ class BacktestEngine:
                         cost = shares_diff * current_price + self.commission
                         self.cash -= cost
                         self.positions[ticker]['shares'] += shares_diff
+                        self.positions[ticker]['initial_shares'] = self.positions[ticker]['shares']
 
                         self.trades.append({
                             'date': date,
@@ -341,10 +540,31 @@ class BacktestEngine:
                     cost = shares * current_price + self.commission
                     self.cash -= cost
 
+                    # Calculate stop-loss price (Qullamaggie style)
+                    entry_day_low = low_prices[ticker] if ticker in low_prices.index else current_price * 0.95
+                    if pd.isna(entry_day_low):
+                        entry_day_low = current_price * 0.95
+
+                    if self.use_stop_loss:
+                        atr = self._calculate_atr(ticker, ohlc_data, date_idx)
+                        # Stop at day low, capped at ATR
+                        stop_distance = min(current_price - entry_day_low, atr) if atr > 0 else current_price - entry_day_low
+                        stop_price = current_price - stop_distance
+                        # Ensure stop is reasonable (not more than 10% away)
+                        stop_price = max(stop_price, current_price * 0.90)
+                    else:
+                        stop_price = 0
+
                     self.positions[ticker] = {
                         'shares': shares,
+                        'initial_shares': shares,
                         'entry_price': current_price,
-                        'entry_date': date
+                        'entry_date': date,
+                        'entry_day_low': entry_day_low,
+                        'stop_price': stop_price,
+                        'stop_type': 'initial',
+                        'partial_exit_done': False,
+                        'days_held': 0
                     }
 
                     self.trades.append({
@@ -353,13 +573,14 @@ class BacktestEngine:
                         'action': 'BUY',
                         'shares': shares,
                         'price': current_price,
-                        'value': cost
+                        'value': cost,
+                        'stop_price': stop_price
                     })
 
     def _record_portfolio_value(
         self,
         date: datetime,
-        prices: pd.DataFrame,
+        ohlc_data: Dict[str, pd.DataFrame],
         date_idx: int
     ) -> float:
         """
@@ -367,13 +588,13 @@ class BacktestEngine:
 
         Args:
             date: Current date
-            prices: Price data
+            ohlc_data: Dict with 'Close', 'High', 'Low' DataFrames
             date_idx: Current date index
 
         Returns:
             Total portfolio value
         """
-        current_prices = prices.iloc[date_idx]
+        current_prices = ohlc_data['Close'].iloc[date_idx]
 
         invested_value = 0
         for ticker, pos in self.positions.items():
@@ -413,12 +634,16 @@ class BacktestEngine:
         """
         logger.info(f"Starting backtest from {start_date} to {end_date}")
         logger.info(f"Universe: {len(tickers)} tickers, {self.num_positions} positions")
+        logger.info(f"Stop-loss enabled: {self.use_stop_loss}")
 
         # Reset state
         self.trades = []
         self.portfolio_history = []
         self.positions = {}
         self.cash = self.initial_capital
+        self.stop_loss_exits = 0
+        self.trailing_stop_exits = 0
+        self.partial_exits = 0
 
         def update_progress(pct: int, msg: str) -> None:
             if progress_callback:
@@ -432,11 +657,13 @@ class BacktestEngine:
         buffer_start = (datetime.strptime(start_date, '%Y-%m-%d') - timedelta(days=400)).strftime('%Y-%m-%d')
 
         logger.info(f"Fetching price data from {buffer_start} to {end_date} for {len(tickers)} tickers")
-        prices = self._fetch_historical_data(tickers, buffer_start, end_date)
+        ohlc_data = self._fetch_historical_data(tickers, buffer_start, end_date)
 
-        if prices.empty:
+        if ohlc_data['Close'].empty:
             logger.error("Failed to fetch any historical data from yfinance")
             return {'success': False, 'error': 'Failed to fetch historical data. Check internet connection and try again.'}
+
+        prices = ohlc_data['Close']
 
         # Log data quality info
         valid_tickers = [t for t in prices.columns if prices[t].notna().sum() > 63]
@@ -451,49 +678,77 @@ class BacktestEngine:
         start_dt = datetime.strptime(start_date, '%Y-%m-%d')
         end_dt = datetime.strptime(end_date, '%Y-%m-%d')
         rebalance_dates = self._get_rebalance_dates(start_dt, end_dt)
+        rebalance_dates_set = set(rebalance_dates)
 
         update_progress(25, "Running simulation...")
 
-        # Run simulation
-        total_rebalances = len(rebalance_dates)
+        # Get all trading days in the backtest period
+        trading_days = prices.index.tolist()
 
+        # Find start index (after buffer period, need 63 days minimum)
+        start_idx = None
+        for i, day in enumerate(trading_days):
+            if day >= start_dt and i >= 63:
+                start_idx = i
+                break
+
+        if start_idx is None:
+            return {'success': False, 'error': 'Insufficient data for backtest period'}
+
+        total_days = len(trading_days) - start_idx
         rebalances_with_trades = 0
         rebalances_skipped = 0
 
-        for i, rebalance_date in enumerate(rebalance_dates):
-            # Find closest date in price data
-            date_mask = prices.index <= rebalance_date
-            if not date_mask.any():
-                rebalances_skipped += 1
-                continue
+        # Daily iteration
+        for date_idx in range(start_idx, len(trading_days)):
+            date = trading_days[date_idx]
 
-            date_idx = date_mask.sum() - 1
-
-            # Need at least 63 days (3 months) of data for meaningful HQM calculation
-            if date_idx < 63:
-                rebalances_skipped += 1
-                continue
-
-            # Calculate HQM scores
-            hqm_df = self._calculate_hqm_scores(prices, date_idx)
-
-            if not hqm_df.empty:
-                # Select top positions
-                top_stocks = hqm_df.head(self.num_positions)
-                equal_weight = 1.0 / len(top_stocks)
-                target_positions = {row['Ticker']: equal_weight for _, row in top_stocks.iterrows()}
-
-                # Execute rebalance
-                self._execute_rebalance(rebalance_date, target_positions, prices, date_idx)
-                rebalances_with_trades += 1
+            # Convert to datetime if needed
+            if hasattr(date, 'to_pydatetime'):
+                date_dt = date.to_pydatetime()
             else:
-                logger.debug(f"No stocks qualified for {rebalance_date}")
+                date_dt = date
 
-            # Record portfolio value
-            self._record_portfolio_value(rebalance_date, prices, date_idx)
+            # Daily stop management (if enabled)
+            if self.use_stop_loss and self.positions:
+                self._manage_positions_daily(date_dt, ohlc_data, date_idx)
 
-            progress_pct = 25 + int(70 * (i + 1) / total_rebalances)
-            update_progress(progress_pct, f"Processing {rebalance_date.strftime('%Y-%m-%d')}...")
+            # Check if this is a rebalance day
+            is_rebalance_day = False
+            for rb_date in rebalance_dates:
+                # Find the closest trading day on or before the rebalance date
+                if date_dt.date() == rb_date.date() or (
+                    date_idx > 0 and
+                    trading_days[date_idx - 1] < rb_date <= date_dt
+                ):
+                    is_rebalance_day = True
+                    break
+
+            if is_rebalance_day:
+                # Calculate HQM scores
+                hqm_df = self._calculate_hqm_scores(ohlc_data, date_idx)
+
+                if not hqm_df.empty:
+                    # Select top positions
+                    top_stocks = hqm_df.head(self.num_positions)
+                    equal_weight = 1.0 / len(top_stocks)
+                    target_positions = {row['Ticker']: equal_weight for _, row in top_stocks.iterrows()}
+
+                    # Execute rebalance
+                    self._execute_rebalance(date_dt, target_positions, ohlc_data, date_idx)
+                    rebalances_with_trades += 1
+                else:
+                    logger.debug(f"No stocks qualified for {date_dt}")
+                    rebalances_skipped += 1
+
+            # Record portfolio value daily
+            self._record_portfolio_value(date_dt, ohlc_data, date_idx)
+
+            # Update progress
+            days_done = date_idx - start_idx + 1
+            progress_pct = 25 + int(70 * days_done / total_days)
+            if days_done % 20 == 0:  # Update every 20 days
+                update_progress(progress_pct, f"Processing {date_dt.strftime('%Y-%m-%d')}...")
 
         logger.info(f"Backtest complete: {rebalances_with_trades} rebalances executed, {rebalances_skipped} skipped")
 
@@ -554,6 +809,13 @@ class BacktestEngine:
         total_closed = len([t for t in self.trades if t['action'] == 'SELL'])
         win_rate = (winning_trades / total_closed * 100) if total_closed > 0 else 0
 
+        # Calculate average days held for closed positions
+        sell_trades_with_days = [t for t in self.trades if t['action'] == 'SELL' and 'days_held' in t]
+        avg_days_held = (
+            sum(t['days_held'] for t in sell_trades_with_days) / len(sell_trades_with_days)
+            if sell_trades_with_days else 0
+        )
+
         # Save to database
         self._save_results_to_db(total_return, sharpe, max_dd, num_trades, win_rate)
 
@@ -571,6 +833,11 @@ class BacktestEngine:
             'num_buy_trades': len(buy_trades),
             'num_sell_trades': len(sell_trades),
             'total_commission': round(num_trades * self.commission, 2),
+            # Stop-loss metrics
+            'stop_loss_exits': self.stop_loss_exits,
+            'trailing_stop_exits': self.trailing_stop_exits,
+            'partial_exits': self.partial_exits,
+            'avg_days_held': round(avg_days_held, 1),
             'portfolio_history': history_df.reset_index().to_dict('records'),
             'trades': self.trades,
             'parameters': {
@@ -578,7 +845,11 @@ class BacktestEngine:
                 'num_positions': self.num_positions,
                 'rebalance_frequency': self.rebalance_frequency,
                 'slippage_pct': self.slippage_pct * 100,
-                'commission': self.commission
+                'commission': self.commission,
+                'use_stop_loss': self.use_stop_loss,
+                'partial_exit_pct': self.partial_exit_pct,
+                'partial_exit_days': self.partial_exit_days,
+                'trailing_ma_period': self.trailing_ma_period
             }
         }
 
@@ -629,7 +900,11 @@ def run_backtest(
     initial_capital: Optional[float] = None,
     num_positions: Optional[int] = None,
     rebalance_frequency: Optional[str] = None,
-    progress_callback: Optional[Callable[[int, str], None]] = None
+    progress_callback: Optional[Callable[[int, str], None]] = None,
+    use_stop_loss: bool = True,
+    partial_exit_pct: float = 0.5,
+    partial_exit_days: int = 4,
+    trailing_ma_period: int = 10
 ) -> Dict[str, Any]:
     """
     Convenience function to run a backtest.
@@ -642,6 +917,10 @@ def run_backtest(
         num_positions: Number of positions
         rebalance_frequency: Rebalance frequency
         progress_callback: Progress callback function
+        use_stop_loss: Enable Qullamaggie-style stop-loss management
+        partial_exit_pct: Percentage of position to sell at partial exit (0.33-0.5)
+        partial_exit_days: Days before partial exit (3-5)
+        trailing_ma_period: Moving average period for trailing stop (10 or 20)
 
     Returns:
         Backtest results
@@ -677,7 +956,11 @@ def run_backtest(
         num_positions=num_positions,
         rebalance_frequency=rebalance_frequency,
         slippage_pct=config.backtest.slippage_percent,
-        commission=config.backtest.commission_per_trade
+        commission=config.backtest.commission_per_trade,
+        use_stop_loss=use_stop_loss,
+        partial_exit_pct=partial_exit_pct,
+        partial_exit_days=partial_exit_days,
+        trailing_ma_period=trailing_ma_period
     )
 
     return engine.run(tickers, start_date, end_date, progress_callback)
