@@ -8,12 +8,13 @@ import streamlit as st
 import pandas as pd
 
 from logger import get_logger
-from database import (
+from supabase_db import (
     add_to_watchlist,
     remove_from_watchlist,
     get_watchlist,
 )
 from components.state import init_session_state
+from components.auth import require_auth, render_auth_ui
 
 logger = get_logger('watchlist_page')
 
@@ -25,8 +26,16 @@ st.set_page_config(
 
 init_session_state()
 
+# Authentication in sidebar
+with st.sidebar:
+    render_auth_ui()
+
 st.title("Watchlist")
 st.markdown("Track stocks you're interested in for potential entry.")
+
+# Require authentication to use this page
+if not require_auth():
+    st.stop()
 
 
 # Add to watchlist form

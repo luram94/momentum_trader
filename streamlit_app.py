@@ -16,6 +16,7 @@ from database import (
     get_stock_count,
 )
 from components.state import init_session_state
+from components.auth import render_auth_ui, is_authenticated, get_current_user_email
 
 # Initialize logger and config
 logger = get_logger('streamlit_app')
@@ -42,6 +43,10 @@ def main():
     # Sidebar with app info
     with st.sidebar:
         st.title("HQM Scanner")
+        st.markdown("---")
+
+        # Authentication UI
+        render_auth_ui()
         st.markdown("---")
 
         # Data status

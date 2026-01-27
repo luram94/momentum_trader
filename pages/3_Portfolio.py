@@ -9,13 +9,14 @@ import pandas as pd
 from datetime import datetime
 
 from logger import get_logger
-from database import (
+from supabase_db import (
     add_portfolio_position,
     close_portfolio_position,
     get_portfolio_positions,
     get_portfolio_summary,
 )
 from components.state import init_session_state
+from components.auth import require_auth, render_auth_ui
 
 logger = get_logger('portfolio_page')
 
@@ -27,8 +28,16 @@ st.set_page_config(
 
 init_session_state()
 
+# Authentication in sidebar
+with st.sidebar:
+    render_auth_ui()
+
 st.title("Portfolio Tracking")
 st.markdown("Track your positions and performance.")
+
+# Require authentication to use this page
+if not require_auth():
+    st.stop()
 
 
 # Sidebar - Add position form
