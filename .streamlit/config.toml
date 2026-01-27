@@ -12,3 +12,4 @@ enableXsrfProtection = true
 
 [browser]
 gatherUsageStats = false
+# Trigger redeploy Tue Jan 27 17:47:57 CET 2026
