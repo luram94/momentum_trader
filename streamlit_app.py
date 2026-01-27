@@ -16,7 +16,7 @@ from database import (
     get_stock_count,
 )
 from components.state import init_session_state
-from components.auth import render_auth_ui, is_authenticated, get_current_user_email
+from components.auth import render_auth_ui, render_auth_banner, is_authenticated, get_current_user_email
 
 # Initialize logger and config
 logger = get_logger('streamlit_app')
@@ -87,6 +87,9 @@ def main():
     # Main content
     st.title("HQM Momentum Scanner")
     st.markdown("### High Quality Momentum Strategy Scanner")
+
+    # Show auth banner for non-logged-in users
+    render_auth_banner()
 
     # Overview metrics
     col1, col2, col3, col4 = st.columns(4)

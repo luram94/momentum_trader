@@ -266,3 +266,74 @@ def render_auth_ui() -> None:
                             st.success(result.get('message', 'Account created!'))
                         else:
                             st.error(result.get('error', 'Sign up failed'))
+
+
+def render_auth_banner() -> None:
+    """Render an authentication banner/dialog on the main page for non-authenticated users."""
+    if is_authenticated():
+        return
+
+    client = get_supabase_client()
+    if not client:
+        return
+
+    with st.container(border=True):
+        col1, col2 = st.columns([2, 1])
+
+        with col1:
+            st.subheader("Create a Free Account")
+            st.markdown("""
+            **Sign up to unlock personal features:**
+            - **Watchlist** - Track stocks you're interested in
+            - **Portfolio** - Monitor your positions and P&L
+            - **Data Sync** - Your data persists across sessions
+
+            *Scanner, Sectors, and Backtest are available without login.*
+            """)
+
+        with col2:
+            st.markdown("####")  # Spacing
+            with st.popover("Login / Sign Up", use_container_width=True):
+                tab1, tab2 = st.tabs(["Login", "Sign Up"])
+
+                with tab1:
+                    with st.form("login_form_banner"):
+                        email = st.text_input("Email", key="login_email_banner")
+                        password = st.text_input("Password", type="password", key="login_password_banner")
+                        submitted = st.form_submit_button("Login", use_container_width=True)
+
+                        if submitted:
+                            if email and password:
+                                result = sign_in(email, password)
+                                if result['success']:
+                                    st.success("Logged in!")
+                                    st.rerun()
+                                else:
+                                    st.error(result.get('error', 'Login failed'))
+                            else:
+                                st.error("Enter email and password")
+
+                with tab2:
+                    with st.form("signup_form_banner"):
+                        email = st.text_input("Email", key="signup_email_banner")
+                        password = st.text_input("Password", type="password", key="signup_password_banner")
+                        password_confirm = st.text_input(
+                            "Confirm Password",
+                            type="password",
+                            key="signup_password_confirm_banner"
+                        )
+                        submitted = st.form_submit_button("Sign Up", use_container_width=True)
+
+                        if submitted:
+                            if not email or not password:
+                                st.error("Enter email and password")
+                            elif password != password_confirm:
+                                st.error("Passwords don't match")
+                            elif len(password) < 6:
+                                st.error("Min 6 characters")
+                            else:
+                                result = sign_up(email, password)
+                                if result['success']:
+                                    st.success("Check your email!")
+                                else:
+                                    st.error(result.get('error', 'Failed'))
