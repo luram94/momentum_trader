@@ -110,22 +110,51 @@ class BacktestEngine:
         if not tickers:
             return pd.DataFrame()
 
+        # Limit tickers to avoid timeout (yfinance can struggle with too many)
+        max_tickers = 200
+        if len(tickers) > max_tickers:
+            logger.warning(f"Limiting from {len(tickers)} to {max_tickers} tickers for backtest")
+            tickers = tickers[:max_tickers]
+
         try:
+            logger.info(f"Downloading price data for {len(tickers)} tickers...")
+
             data = yf.download(
-                ' '.join(tickers),
+                tickers,
                 start=start_date,
                 end=end_date,
-                progress=False
+                progress=False,
+                threads=True,
+                timeout=60
             )
 
             if data.empty:
+                logger.error("yfinance returned empty data")
                 return pd.DataFrame()
 
             # Handle single ticker case
             if len(tickers) == 1:
-                prices = data['Adj Close'].to_frame(name=tickers[0])
+                if 'Adj Close' in data.columns:
+                    prices = data['Adj Close'].to_frame(name=tickers[0])
+                elif 'Close' in data.columns:
+                    prices = data['Close'].to_frame(name=tickers[0])
+                else:
+                    logger.error("No price column found in data")
+                    return pd.DataFrame()
             else:
-                prices = data['Adj Close']
+                if 'Adj Close' in data.columns:
+                    prices = data['Adj Close']
+                elif 'Close' in data.columns:
+                    prices = data['Close']
+                else:
+                    logger.error("No price column found in data")
+                    return pd.DataFrame()
+
+            # Remove tickers with all NaN values
+            valid_cols = prices.columns[prices.notna().any()]
+            prices = prices[valid_cols]
+
+            logger.info(f"Successfully fetched {len(prices.columns)} tickers with {len(prices)} days of data")
 
             return prices
 
@@ -136,7 +165,8 @@ class BacktestEngine:
     def _calculate_hqm_scores(
         self,
         prices: pd.DataFrame,
-        date_idx: int
+        date_idx: int,
+        min_data_days: int = 63
     ) -> pd.DataFrame:
         """
         Calculate HQM scores at a specific point in time.
@@ -144,41 +174,57 @@ class BacktestEngine:
         Args:
             prices: Historical price data
             date_idx: Index of current date in prices
+            min_data_days: Minimum days of data required (default 63 for 3-month returns)
 
         Returns:
             DataFrame with HQM scores
         """
-        if date_idx < 252:  # Need at least 1 year of data
+        if date_idx < min_data_days:
+            logger.debug(f"Skipping date_idx {date_idx}: need at least {min_data_days} days")
             return pd.DataFrame()
 
         results = []
+        skipped_nan = 0
+        skipped_length = 0
 
         for ticker in prices.columns:
             try:
-                ticker_prices = prices[ticker].iloc[:date_idx + 1]
+                ticker_prices = prices[ticker].iloc[:date_idx + 1].dropna()
 
-                if len(ticker_prices) < 252:
+                if len(ticker_prices) < min_data_days:
+                    skipped_length += 1
                     continue
 
                 current_price = ticker_prices.iloc[-1]
 
-                # Calculate returns for different periods
-                return_1m = (current_price / ticker_prices.iloc[-21] - 1) if len(ticker_prices) >= 21 else 0
-                return_3m = (current_price / ticker_prices.iloc[-63] - 1) if len(ticker_prices) >= 63 else 0
-                return_6m = (current_price / ticker_prices.iloc[-126] - 1) if len(ticker_prices) >= 126 else 0
-                return_1y = (current_price / ticker_prices.iloc[-252] - 1) if len(ticker_prices) >= 252 else 0
+                if pd.isna(current_price) or current_price <= 0:
+                    skipped_nan += 1
+                    continue
+
+                # Calculate returns for available periods
+                return_1m = (current_price / ticker_prices.iloc[-21] - 1) if len(ticker_prices) >= 21 else None
+                return_3m = (current_price / ticker_prices.iloc[-63] - 1) if len(ticker_prices) >= 63 else None
+                return_6m = (current_price / ticker_prices.iloc[-126] - 1) if len(ticker_prices) >= 126 else None
+                return_1y = (current_price / ticker_prices.iloc[-252] - 1) if len(ticker_prices) >= 252 else None
+
+                # Need at least 3-month return to be useful
+                if return_3m is None:
+                    continue
 
                 results.append({
                     'Ticker': ticker,
                     'Price': current_price,
-                    'Return_1M': return_1m,
+                    'Return_1M': return_1m if return_1m is not None else 0,
                     'Return_3M': return_3m,
-                    'Return_6M': return_6m,
-                    'Return_1Y': return_1y
+                    'Return_6M': return_6m if return_6m is not None else return_3m,
+                    'Return_1Y': return_1y if return_1y is not None else return_6m if return_6m is not None else return_3m
                 })
 
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Error processing {ticker}: {e}")
                 continue
+
+        logger.debug(f"HQM calc: {len(results)} valid, {skipped_nan} NaN, {skipped_length} insufficient data")
 
         if not results:
             return pd.DataFrame()
@@ -192,21 +238,26 @@ class BacktestEngine:
             col = f'Return_{period}'
             pct_col = f'Pct_{period}'
             valid_returns = df[col].dropna()
-            df[pct_col] = df[col].apply(
-                lambda x: percentileofscore(valid_returns, x, kind='mean')
-                if pd.notna(x) else 0
-            )
+            if len(valid_returns) > 0:
+                df[pct_col] = df[col].apply(
+                    lambda x: percentileofscore(valid_returns, x, kind='mean')
+                    if pd.notna(x) else 50
+                )
+            else:
+                df[pct_col] = 50
 
         # Calculate HQM Score
         pct_cols = ['Pct_1M', 'Pct_3M', 'Pct_6M', 'Pct_1Y']
         df['HQM_Score'] = df[pct_cols].mean(axis=1)
         df['Min_Pct'] = df[pct_cols].min(axis=1)
 
-        # Filter quality momentum
-        df = df[df['Min_Pct'] >= 25]
+        # Filter quality momentum (relaxed threshold for backtesting)
+        df = df[df['Min_Pct'] >= 20]
 
         # Sort by HQM Score
         df = df.sort_values('HQM_Score', ascending=False)
+
+        logger.debug(f"After filter: {len(df)} stocks qualify")
 
         return df.head(self.num_positions * 2)  # Get extra candidates
 
@@ -377,12 +428,22 @@ class BacktestEngine:
         update_progress(5, "Fetching historical data...")
 
         # Fetch price data
-        # Add 1 year buffer for lookback calculations
+        # Add buffer for lookback calculations (1 year + margin)
         buffer_start = (datetime.strptime(start_date, '%Y-%m-%d') - timedelta(days=400)).strftime('%Y-%m-%d')
+
+        logger.info(f"Fetching price data from {buffer_start} to {end_date} for {len(tickers)} tickers")
         prices = self._fetch_historical_data(tickers, buffer_start, end_date)
 
         if prices.empty:
-            return {'success': False, 'error': 'Failed to fetch historical data'}
+            logger.error("Failed to fetch any historical data from yfinance")
+            return {'success': False, 'error': 'Failed to fetch historical data. Check internet connection and try again.'}
+
+        # Log data quality info
+        valid_tickers = [t for t in prices.columns if prices[t].notna().sum() > 63]
+        logger.info(f"Fetched data for {len(prices.columns)} tickers, {len(valid_tickers)} have sufficient data")
+
+        if len(valid_tickers) < self.num_positions:
+            logger.warning(f"Only {len(valid_tickers)} tickers have enough data for {self.num_positions} positions")
 
         update_progress(20, "Generating rebalance schedule...")
 
@@ -396,15 +457,21 @@ class BacktestEngine:
         # Run simulation
         total_rebalances = len(rebalance_dates)
 
+        rebalances_with_trades = 0
+        rebalances_skipped = 0
+
         for i, rebalance_date in enumerate(rebalance_dates):
             # Find closest date in price data
             date_mask = prices.index <= rebalance_date
             if not date_mask.any():
+                rebalances_skipped += 1
                 continue
 
             date_idx = date_mask.sum() - 1
 
-            if date_idx < 252:
+            # Need at least 63 days (3 months) of data for meaningful HQM calculation
+            if date_idx < 63:
+                rebalances_skipped += 1
                 continue
 
             # Calculate HQM scores
@@ -418,12 +485,17 @@ class BacktestEngine:
 
                 # Execute rebalance
                 self._execute_rebalance(rebalance_date, target_positions, prices, date_idx)
+                rebalances_with_trades += 1
+            else:
+                logger.debug(f"No stocks qualified for {rebalance_date}")
 
             # Record portfolio value
             self._record_portfolio_value(rebalance_date, prices, date_idx)
 
             progress_pct = 25 + int(70 * (i + 1) / total_rebalances)
             update_progress(progress_pct, f"Processing {rebalance_date.strftime('%Y-%m-%d')}...")
+
+        logger.info(f"Backtest complete: {rebalances_with_trades} rebalances executed, {rebalances_skipped} skipped")
 
         update_progress(95, "Calculating metrics...")
 
@@ -442,7 +514,10 @@ class BacktestEngine:
             Dict with comprehensive results
         """
         if not self.portfolio_history:
-            return {'success': False, 'error': 'No portfolio history generated'}
+            return {'success': False, 'error': 'No portfolio history generated. Try a longer date range or check if market data is available.'}
+
+        if len(self.trades) == 0:
+            logger.warning("Backtest completed but no trades were executed")
 
         # Convert to DataFrame
         history_df = pd.DataFrame(self.portfolio_history)
