@@ -312,6 +312,14 @@ if st.session_state.scan_results:
 
     df = pd.DataFrame(results)
 
+    # Create TradingView URL for each ticker
+    def make_tradingview_url(row):
+        ticker = row['Ticker']
+        exchange = row.get('Exchange', 'NASDAQ')
+        return f"https://es.tradingview.com/chart/EyK3ZRHL/?symbol={exchange}%3A{ticker}"
+
+    df['TradingView'] = df.apply(make_tradingview_url, axis=1)
+
     # Format columns for display
     display_columns = {
         'Ticker': 'Ticker',
@@ -325,6 +333,7 @@ if st.session_state.scan_results:
         'Return_3M': '3M %',
         'Return_6M': '6M %',
         'Return_1Y': '1Y %',
+        'TradingView': 'Chart',
     }
 
     # Filter to available columns
@@ -336,6 +345,7 @@ if st.session_state.scan_results:
     st.dataframe(
         display_df,
         column_config={
+            'Ticker': st.column_config.TextColumn(),
             'Price': st.column_config.NumberColumn(format="$%.2f"),
             'HQM': st.column_config.NumberColumn(format="%.1f"),
             'Value': st.column_config.NumberColumn(format="$%.2f"),
@@ -344,6 +354,7 @@ if st.session_state.scan_results:
             '3M %': st.column_config.NumberColumn(format="%.2f%%"),
             '6M %': st.column_config.NumberColumn(format="%.2f%%"),
             '1Y %': st.column_config.NumberColumn(format="%.2f%%"),
+            'Chart': st.column_config.LinkColumn(display_text="📈 View"),
         },
         hide_index=True,
         use_container_width=True,
