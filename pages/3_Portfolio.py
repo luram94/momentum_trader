@@ -115,7 +115,9 @@ with tab1:
                 col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 2, 1])
 
                 with col1:
-                    st.markdown(f"### {pos['ticker']}")
+                    # Create TradingView link for ticker
+                    tv_url = f"https://es.tradingview.com/chart/EyK3ZRHL/?symbol=NASDAQ%3A{pos['ticker']}"
+                    st.markdown(f"### [{pos['ticker']}]({tv_url})")
                     st.caption(f"{pos['shares']} shares @ ${pos['entry_price']:.2f}")
 
                 with col2:

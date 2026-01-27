@@ -97,7 +97,9 @@ if watchlist:
             col1, col2, col3, col4 = st.columns([2, 2, 2, 1])
 
             with col1:
-                st.markdown(f"### {row['ticker']}")
+                # Create TradingView link for ticker
+                tv_url = f"https://es.tradingview.com/chart/EyK3ZRHL/?symbol=NASDAQ%3A{row['ticker']}"
+                st.markdown(f"### [{row['ticker']}]({tv_url})")
                 if row.get('sector'):
                     st.caption(row['sector'])
 
