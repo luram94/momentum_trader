@@ -72,32 +72,6 @@ backtest:
   slippage_percent: 0.1       # 0.1% slippage per trade
   commission_per_trade: 0     # Commission per trade in USD
 
-# Watchlist & Alerts
-watchlist:
-  max_items: 50
-  alerts:
-    email_enabled: false
-    email_address: ''
-    sma_entry_threshold: 5    # Alert when stock drops to within 5% of SMA10
-
-# Portfolio Tracking
-tracking:
-  enabled: true
-  auto_save: true
-  history_days: 365           # Keep tracking history for this many days
-
-# Export Settings
-export:
-  excel_filename: 'hqm_portfolio.xlsx'
-  csv_filename: 'hqm_portfolio.csv'
-  include_charts: true
-
-# Web Application Settings (legacy - kept for config loader compatibility)
-web:
-  host: '0.0.0.0'
-  port: 8501
-  debug: false
-  poll_interval_ms: 300       # Status polling interval
 
 # Logging Settings
 logging:
@@ -118,17 +92,4 @@ rate_limits:
 # Database Settings
 database:
   path: 'data/hqm_data.db'
-  backup_enabled: true
-  backup_frequency: daily     # daily, weekly
   vacuum_on_startup: false    # Run VACUUM on startup
-
-# Theme Settings
-theme:
-  default: 'dark'             # 'dark' or 'light'
-  colors:
-    primary: '#198754'
-    success: '#20c997'
-    warning: '#ffc107'
-    danger: '#dc3545'
-    background_dark: '#0d1117'
-    background_light: '#ffffff'

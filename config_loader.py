@@ -116,45 +116,6 @@ class BacktestConfig:
     commission_per_trade: float = 0
 
 
-@dataclass
-class AlertsConfig:
-    """Alert settings."""
-    email_enabled: bool = False
-    email_address: str = ''
-    sma_entry_threshold: float = 5
-
-
-@dataclass
-class WatchlistConfig:
-    """Watchlist configuration."""
-    max_items: int = 50
-    alerts: AlertsConfig = field(default_factory=AlertsConfig)
-
-
-@dataclass
-class TrackingConfig:
-    """Portfolio tracking configuration."""
-    enabled: bool = True
-    auto_save: bool = True
-    history_days: int = 365
-
-
-@dataclass
-class ExportConfig:
-    """Export settings."""
-    excel_filename: str = 'hqm_portfolio.xlsx'
-    csv_filename: str = 'hqm_portfolio.csv'
-    include_charts: bool = True
-
-
-@dataclass
-class WebConfig:
-    """Web application configuration."""
-    host: str = '0.0.0.0'
-    port: int = 8501
-    debug: bool = False
-    poll_interval_ms: int = 300
-
 
 @dataclass
 class LoggingConfig:
@@ -180,27 +141,7 @@ class RateLimitsConfig:
 class DatabaseConfig:
     """Database configuration."""
     path: str = 'hqm_data.db'
-    backup_enabled: bool = True
-    backup_frequency: str = 'daily'
     vacuum_on_startup: bool = False
-
-
-@dataclass
-class ThemeColorsConfig:
-    """Theme color settings."""
-    primary: str = '#198754'
-    success: str = '#20c997'
-    warning: str = '#ffc107'
-    danger: str = '#dc3545'
-    background_dark: str = '#0d1117'
-    background_light: str = '#ffffff'
-
-
-@dataclass
-class ThemeConfig:
-    """Theme configuration."""
-    default: str = 'dark'
-    colors: ThemeColorsConfig = field(default_factory=ThemeColorsConfig)
 
 
 @dataclass
@@ -213,14 +154,9 @@ class Config:
     sectors: SectorsConfig = field(default_factory=SectorsConfig)
     risk: RiskConfig = field(default_factory=RiskConfig)
     backtest: BacktestConfig = field(default_factory=BacktestConfig)
-    watchlist: WatchlistConfig = field(default_factory=WatchlistConfig)
-    tracking: TrackingConfig = field(default_factory=TrackingConfig)
-    export: ExportConfig = field(default_factory=ExportConfig)
-    web: WebConfig = field(default_factory=WebConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     rate_limits: RateLimitsConfig = field(default_factory=RateLimitsConfig)
     database: DatabaseConfig = field(default_factory=DatabaseConfig)
-    theme: ThemeConfig = field(default_factory=ThemeConfig)
 
 
 def _dict_to_dataclass(data: Dict[str, Any], cls: type) -> Any:
@@ -283,20 +219,9 @@ def load_config(config_path: Optional[Path] = None) -> Config:
             ),
             risk=_dict_to_dataclass(raw_config.get('risk', {}), RiskConfig),
             backtest=_dict_to_dataclass(raw_config.get('backtest', {}), BacktestConfig),
-            watchlist=WatchlistConfig(
-                max_items=raw_config.get('watchlist', {}).get('max_items', 50),
-                alerts=_dict_to_dataclass(raw_config.get('watchlist', {}).get('alerts', {}), AlertsConfig),
-            ),
-            tracking=_dict_to_dataclass(raw_config.get('tracking', {}), TrackingConfig),
-            export=_dict_to_dataclass(raw_config.get('export', {}), ExportConfig),
-            web=_dict_to_dataclass(raw_config.get('web', {}), WebConfig),
             logging=_dict_to_dataclass(raw_config.get('logging', {}), LoggingConfig),
             rate_limits=_dict_to_dataclass(raw_config.get('rate_limits', {}), RateLimitsConfig),
             database=_dict_to_dataclass(raw_config.get('database', {}), DatabaseConfig),
-            theme=ThemeConfig(
-                default=raw_config.get('theme', {}).get('default', 'dark'),
-                colors=_dict_to_dataclass(raw_config.get('theme', {}).get('colors', {}), ThemeColorsConfig),
-            ),
         )
 
         return config

@@ -12,13 +12,6 @@ def init_session_state() -> None:
     """Initialize default session state values."""
 
     defaults = {
-        # Authentication state
-        'user_id': None,
-        'user_email': None,
-        'is_authenticated': False,
-        'access_token': None,
-        'refresh_token': None,
-
         # Scan state
         'scan_results': None,
         'scan_summary': None,
