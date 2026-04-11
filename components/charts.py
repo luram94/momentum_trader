@@ -340,3 +340,118 @@ def create_sector_performance_chart(
         )
 
     return _apply_dark_theme(fig)
+
+
+def create_industry_pie_chart(
+    industry_data: List[Dict[str, Any]],
+    value_column: str = 'Count',
+    top_n: int = 15
+) -> go.Figure:
+    """
+    Create a pie chart showing industry distribution (top N).
+
+    Args:
+        industry_data: List of dictionaries with 'Industry' and value column
+        value_column: Column name for values
+        top_n: Number of top industries to show individually
+
+    Returns:
+        Plotly figure
+    """
+    df = pd.DataFrame(industry_data)
+
+    # Group smaller industries into "Other"
+    if len(df) > top_n:
+        df = df.sort_values(value_column, ascending=False)
+        top = df.head(top_n).copy()
+        other_sum = df.iloc[top_n:][value_column].sum()
+        other_row = pd.DataFrame([{'Industry': 'Other', value_column: other_sum}])
+        df = pd.concat([top, other_row], ignore_index=True)
+
+    fig = px.pie(
+        df,
+        values=value_column,
+        names='Industry',
+        color_discrete_sequence=px.colors.qualitative.Set3,
+    )
+
+    fig.update_traces(
+        textposition='inside',
+        textinfo='percent+label',
+    )
+
+    fig.update_layout(
+        title=f'Industry Distribution (Top {top_n})',
+        showlegend=True,
+        legend=dict(
+            orientation='h',
+            yanchor='bottom',
+            y=-0.3,
+            xanchor='center',
+            x=0.5
+        ),
+        height=500,
+    )
+
+    return _apply_dark_theme(fig)
+
+
+def create_industry_performance_chart(
+    industry_data: List[Dict[str, Any]],
+    top_n: int = 20
+) -> go.Figure:
+    """
+    Create a bar chart showing industry performance (top and bottom).
+
+    Args:
+        industry_data: List of industry performance dictionaries
+        top_n: Number of industries to show
+
+    Returns:
+        Plotly figure
+    """
+    df = pd.DataFrame(industry_data)
+
+    if 'Avg_Return_3M' in df.columns:
+        df = df.sort_values('Avg_Return_3M', ascending=False)
+        # Show top and bottom performers
+        if len(df) > top_n:
+            half = top_n // 2
+            df = pd.concat([df.head(half), df.tail(half)])
+        df = df.sort_values('Avg_Return_3M', ascending=True)
+
+        colors = df['Avg_Return_3M'].apply(
+            lambda x: COLORS['success'] if x > 0 else COLORS['danger']
+        )
+
+        fig = go.Figure(go.Bar(
+            x=df['Avg_Return_3M'] * 100,
+            y=df['Industry'],
+            orientation='h',
+            marker_color=colors,
+            text=df['Avg_Return_3M'].apply(lambda x: f'{x*100:.1f}%'),
+            textposition='auto',
+        ))
+
+        fig.update_layout(
+            title='Industry Performance (3-Month Avg Return)',
+            xaxis_title='Return (%)',
+            yaxis_title='Industry',
+            height=max(500, len(df) * 28),
+        )
+    else:
+        fig = go.Figure(go.Bar(
+            x=df.get('Count', df.get('stock_count', [])),
+            y=df['Industry'],
+            orientation='h',
+            marker_color=COLORS['primary'],
+        ))
+
+        fig.update_layout(
+            title='Stocks by Industry',
+            xaxis_title='Count',
+            yaxis_title='Industry',
+            height=max(500, len(df) * 28),
+        )
+
+    return _apply_dark_theme(fig)

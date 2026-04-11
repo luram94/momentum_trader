@@ -41,7 +41,7 @@ By requiring consistency across all timeframes, the strategy filters out stocks 
 ### Portfolio Management
 - **Watchlist**: Track stocks of interest
 - **Portfolio Tracking**: Log positions and monitor P&L
-- **Sector Analysis**: Performance breakdown by sector
+- **Sector & Industry Analysis**: Performance breakdown by sector and industry, with drill-down by sector
 
 ## Tech Stack
 
@@ -140,7 +140,7 @@ momentum_trader/
 │   ├── 1_Scanner.py       # HQM scanner with filters
 │   ├── 2_Watchlist.py     # Watchlist management
 │   ├── 3_Portfolio.py     # Portfolio tracking
-│   ├── 4_Sectors.py       # Sector analysis
+│   ├── 4_Sectors.py       # Sector & industry analysis
 │   └── 5_Backtest.py      # Backtesting
 ├── components/
 │   ├── charts.py          # Plotly chart helpers

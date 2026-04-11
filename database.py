@@ -231,6 +231,20 @@ def init_database() -> None:
         )
     ''')
 
+    # Industry performance tracking
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS industry_performance (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date DATE,
+            industry TEXT,
+            avg_hqm_score REAL,
+            stock_count INTEGER,
+            avg_return_1m REAL,
+            avg_return_3m REAL,
+            UNIQUE(date, industry)
+        )
+    ''')
+
     conn.commit()
     conn.close()
     logger.info(f"Database initialized at {DB_PATH}")
@@ -589,7 +603,7 @@ def run_hqm_scan_from_db(
     # Load all stocks from database
     df = pd.read_sql_query('''
         SELECT ticker as Ticker, exchange as Exchange, sector as Sector,
-               market_cap as Market_Cap, price as Price,
+               industry as Industry, market_cap as Market_Cap, price as Price,
                volume as Volume, avg_volume as Avg_Volume,
                return_1m as Return_1M, return_3m as Return_3M,
                return_6m as Return_6M, return_1y as Return_1Y
@@ -802,13 +816,29 @@ def run_hqm_scan_from_db(
             ''', (today, sector_row['Sector'], sector_row['HQM_Score'],
                   sector_row['Ticker'], sector_row['Return_1M'], sector_row['Return_3M']))
 
+        # Update industry performance
+        industry_stats = df.groupby('Industry').agg({
+            'HQM_Score': 'mean',
+            'Ticker': 'count',
+            'Return_1M': 'mean',
+            'Return_3M': 'mean'
+        }).reset_index()
+
+        for _, ind_row in industry_stats.iterrows():
+            cursor.execute('''
+                INSERT OR REPLACE INTO industry_performance
+                (date, industry, avg_hqm_score, stock_count, avg_return_1m, avg_return_3m)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (today, ind_row['Industry'], ind_row['HQM_Score'],
+                  ind_row['Ticker'], ind_row['Return_1M'], ind_row['Return_3M']))
+
         conn.commit()
 
     conn.close()
 
     # Prepare results
     result_columns = [
-        'Ticker', 'Price', 'Market_Cap_Display', 'Exchange', 'Sector',
+        'Ticker', 'Price', 'Market_Cap_Display', 'Exchange', 'Sector', 'Industry',
         'Return_1M', 'Pct_1M', 'Return_3M', 'Pct_3M',
         'Return_6M', 'Pct_6M', 'Return_1Y', 'Pct_1Y',
         'HQM_Score', 'SMA10_Distance', 'RSI', 'ATR_Percent',
@@ -1191,6 +1221,64 @@ def get_sector_hqm_scores() -> List[Dict[str, Any]]:
         FROM sector_performance
         WHERE date >= date('now', '-7 days')
         GROUP BY sector
+        ORDER BY avg_hqm DESC
+    ''', conn)
+
+    conn.close()
+    return df.to_dict('records')
+
+
+# =============================================================================
+# INDUSTRY ANALYSIS FUNCTIONS
+# =============================================================================
+
+def get_industry_breakdown() -> List[Dict[str, Any]]:
+    """
+    Get industry breakdown from current stock data.
+
+    Returns:
+        List of industry statistics
+    """
+    conn = get_connection()
+
+    df = pd.read_sql_query('''
+        SELECT
+            industry as Industry,
+            sector as Sector,
+            COUNT(*) as Count,
+            AVG(return_1m) as Avg_Return_1M,
+            AVG(return_3m) as Avg_Return_3M,
+            AVG(return_6m) as Avg_Return_6M,
+            AVG(return_1y) as Avg_Return_1Y
+        FROM stocks
+        WHERE industry IS NOT NULL AND industry != ''
+        GROUP BY industry
+        ORDER BY Avg_Return_3M DESC
+    ''', conn)
+
+    conn.close()
+    return df.to_dict('records')
+
+
+def get_industry_hqm_scores() -> List[Dict[str, Any]]:
+    """
+    Get average HQM scores by industry from recent history.
+
+    Returns:
+        List of industry HQM statistics
+    """
+    conn = get_connection()
+
+    df = pd.read_sql_query('''
+        SELECT
+            industry,
+            AVG(avg_hqm_score) as avg_hqm,
+            SUM(stock_count) as total_stocks,
+            AVG(avg_return_1m) as avg_return_1m,
+            AVG(avg_return_3m) as avg_return_3m
+        FROM industry_performance
+        WHERE date >= date('now', '-7 days')
+        GROUP BY industry
         ORDER BY avg_hqm DESC
     ''', conn)
 

@@ -71,7 +71,7 @@ def main():
         - **Scanner**: Run HQM scans
         - **Watchlist**: Track stocks
         - **Portfolio**: Track positions
-        - **Sectors**: Sector analysis
+        - **Sectors & Industries**: Sector/industry analysis
         - **Backtest**: Historical testing
         """)
 

@@ -329,6 +329,7 @@ if st.session_state.scan_results:
         'Value': 'Value',
         'Weight': 'Weight %',
         'Sector': 'Sector',
+        'Industry': 'Industry',
         'Return_1M': '1M %',
         'Return_3M': '3M %',
         'Return_6M': '6M %',
