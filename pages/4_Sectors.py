@@ -15,6 +15,7 @@ from database import (
     get_industry_hqm_scores,
     get_stock_count,
 )
+from formatting import frac_cols_to_pct
 from components.state import init_session_state
 from components.charts import (
     create_sector_pie_chart,
@@ -115,6 +116,11 @@ with tab_sectors:
     df_display = df_display[available_cols]
     df_display.columns = [column_mapping[c] for c in available_cols]
 
+    # Returns are stored as decimal fractions; scale to percent for display
+    df_display = frac_cols_to_pct(
+        df_display, ['1M Avg Return', '3M Avg Return', '6M Avg Return', '1Y Avg Return']
+    )
+
     if '3M Avg Return' in df_display.columns:
         df_display = df_display.sort_values('3M Avg Return', ascending=False)
 
@@ -139,6 +145,7 @@ with tab_sectors:
         st.caption("Average HQM scores from recent scans")
 
         df_hqm = pd.DataFrame(sector_hqm)
+        df_hqm = frac_cols_to_pct(df_hqm, ['avg_return_1m', 'avg_return_3m'])
 
         if 'avg_hqm' in df_hqm.columns:
             df_hqm = df_hqm.sort_values('avg_hqm', ascending=False)
@@ -247,6 +254,11 @@ with tab_industries:
     df_ind_display = df_ind_display[available_cols]
     df_ind_display.columns = [column_mapping[c] for c in available_cols]
 
+    # Returns are stored as decimal fractions; scale to percent for display
+    df_ind_display = frac_cols_to_pct(
+        df_ind_display, ['1M Avg Return', '3M Avg Return', '6M Avg Return', '1Y Avg Return']
+    )
+
     if '3M Avg Return' in df_ind_display.columns:
         df_ind_display = df_ind_display.sort_values('3M Avg Return', ascending=False)
 
@@ -272,6 +284,7 @@ with tab_industries:
         st.caption("Average HQM scores from recent scans (top 30)")
 
         df_ind_hqm = pd.DataFrame(industry_hqm)
+        df_ind_hqm = frac_cols_to_pct(df_ind_hqm, ['avg_return_1m', 'avg_return_3m'])
 
         if 'avg_hqm' in df_ind_hqm.columns:
             df_ind_hqm = df_ind_hqm.sort_values('avg_hqm', ascending=False).head(30)

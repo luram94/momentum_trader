@@ -51,11 +51,22 @@ def get_historical_prices(
         if data.empty:
             return pd.DataFrame()
 
-        # Handle single vs multiple tickers
-        if len(tickers) == 1:
-            prices = data['Adj Close'].to_frame(name=tickers[0])
+        # yfinance >= 0.2.51 defaults to auto_adjust=True, which drops the
+        # 'Adj Close' column ('Close' is already adjusted). Prefer 'Adj Close'
+        # when present for older versions, otherwise fall back to 'Close'.
+        price_field = 'Adj Close' if 'Adj Close' in data.columns.get_level_values(0) else 'Close'
+
+        if isinstance(data.columns, pd.MultiIndex):
+            prices = data[price_field]
+            if isinstance(prices, pd.Series):
+                prices = prices.to_frame(name=tickers[0])
         else:
-            prices = data['Adj Close']
+            # Flat columns (older yfinance, single ticker)
+            prices = data[[price_field]].rename(columns={price_field: tickers[0]})
+
+        # Drop tickers that returned no data at all before aligning rows, so
+        # one failed ticker doesn't wipe out the whole price history.
+        prices = prices.dropna(axis=1, how='all')
 
         return prices.dropna()
 
@@ -96,14 +107,21 @@ def calculate_sharpe_ratio(
     if risk_free_rate is None:
         risk_free_rate = config.risk.risk_free_rate
 
-    if len(returns) == 0 or returns.std() == 0:
+    if len(returns) == 0:
         return 0.0
 
     # Convert annual risk-free rate to per-period
     rf_per_period = (1 + risk_free_rate) ** (1 / periods_per_year) - 1
 
     excess_returns = returns - rf_per_period
-    sharpe = (excess_returns.mean() / excess_returns.std()) * np.sqrt(periods_per_year)
+    std = excess_returns.std()
+
+    # Constant returns can produce a float-noise std (~1e-18) rather than an
+    # exact 0, which would explode the ratio to a nonsense value.
+    if not np.isfinite(std) or np.isclose(std, 0):
+        return 0.0
+
+    sharpe = (excess_returns.mean() / std) * np.sqrt(periods_per_year)
 
     return round(sharpe, 3)
 
@@ -369,6 +387,28 @@ def calculate_sortino_ratio(
     return round(sortino, 3)
 
 
+def _unavailable_risk_metrics() -> Dict[str, Any]:
+    """
+    Metrics dict for when historical data could not be fetched.
+
+    Values are None (not 0 / 1.0) so the UI can distinguish "not computed"
+    from a real result and must not present defaults as calculations.
+    """
+    return {
+        'data_available': False,
+        'sharpe_ratio': None,
+        'sortino_ratio': None,
+        'max_drawdown': None,
+        'max_drawdown_peak': None,
+        'max_drawdown_trough': None,
+        'portfolio_beta': None,
+        'volatility': None,
+        'var_95': None,
+        'var_99': None,
+        'annualized_return': None,
+    }
+
+
 def calculate_all_risk_metrics(
     tickers: List[str],
     weights: List[float],
@@ -380,48 +420,37 @@ def calculate_all_risk_metrics(
 
     Args:
         tickers: List of ticker symbols
-        weights: Portfolio weights
+        weights: Portfolio weights (aligned with tickers)
         portfolio_value: Current portfolio value
         period: Historical period for calculations
 
     Returns:
-        Dict with all risk metrics
+        Dict with all risk metrics. 'data_available' is False (and all
+        metric values None) when historical prices could not be fetched.
     """
     logger.info(f"Calculating risk metrics for {len(tickers)} stocks")
 
     prices = get_historical_prices(tickers + [config.risk.benchmark], period=period)
 
     if prices.empty:
-        return {
-            'sharpe_ratio': 0,
-            'sortino_ratio': 0,
-            'max_drawdown': 0,
-            'portfolio_beta': 1.0,
-            'volatility': 0,
-            'var_95': 0,
-            'var_99': 0
-        }
+        logger.warning("Risk metrics unavailable: no historical price data fetched")
+        return _unavailable_risk_metrics()
 
     returns = calculate_returns(prices)
 
-    # Normalize weights
-    weights = np.array(weights)
-    weights = weights / weights.sum()
-
-    # Get only portfolio tickers (not benchmark)
-    portfolio_tickers = [t for t in tickers if t in returns.columns]
-    portfolio_weights = weights[:len(portfolio_tickers)]
+    # Keep only tickers with data, and keep weights aligned to those tickers
+    # (never truncate positionally: a missing middle ticker would shift every
+    # weight onto the wrong stock).
+    weights = np.array(weights, dtype=float)
+    present = [t in returns.columns for t in tickers]
+    portfolio_tickers = [t for t, ok in zip(tickers, present) if ok]
 
     if len(portfolio_tickers) == 0:
-        return {
-            'sharpe_ratio': 0,
-            'sortino_ratio': 0,
-            'max_drawdown': 0,
-            'portfolio_beta': 1.0,
-            'volatility': 0,
-            'var_95': 0,
-            'var_99': 0
-        }
+        logger.warning("Risk metrics unavailable: no portfolio tickers had price data")
+        return _unavailable_risk_metrics()
+
+    portfolio_weights = weights[present]
+    portfolio_weights = portfolio_weights / portfolio_weights.sum()
 
     # Calculate portfolio returns
     portfolio_returns = (returns[portfolio_tickers] * portfolio_weights).sum(axis=1)
@@ -447,6 +476,7 @@ def calculate_all_risk_metrics(
         portfolio_beta = calculate_portfolio_beta(portfolio_tickers, portfolio_weights, period=period)
 
     metrics = {
+        'data_available': True,
         'sharpe_ratio': sharpe,
         'sortino_ratio': sortino,
         'max_drawdown': max_dd,

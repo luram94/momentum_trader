@@ -261,9 +261,10 @@ class TestHQMStrategy:
 
         returns = [0.05, 0.10, 0.15, 0.20, 0.25, 0.30]
 
-        # Test middle value
+        # Test middle value: 3 of 6 values are below 0.175 and none equal it,
+        # so kind='mean' gives exactly 50.0
         pct = percentileofscore(returns, 0.175, kind='mean')
-        assert 50 < pct < 70
+        assert pct == pytest.approx(50.0)
 
         # Test low value
         pct_low = percentileofscore(returns, 0.05, kind='mean')
