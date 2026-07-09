@@ -19,6 +19,7 @@ from database import (
     get_sector_breakdown,
 )
 from risk_metrics import calculate_all_risk_metrics
+from formatting import frac_cols_to_pct
 from components.state import init_session_state
 from components.charts import (
     create_allocation_chart,
@@ -296,14 +297,13 @@ if st.session_state.scan_results:
         st.metric("Cash Remaining", f"${summary.get('cash_remaining', 0):,.2f}")
 
     with col5:
-        if 'risk_metrics' in summary and summary['risk_metrics']:
-            sharpe = summary['risk_metrics'].get('sharpe_ratio', 'N/A')
-            if isinstance(sharpe, (int, float)):
-                st.metric("Est. Sharpe", f"{sharpe:.2f}")
-            else:
-                st.metric("Est. Sharpe", sharpe)
+        risk = summary.get('risk_metrics') or {}
+        sharpe = risk.get('sharpe_ratio')
+        if risk.get('data_available') and isinstance(sharpe, (int, float)):
+            st.metric("Est. Sharpe", f"{sharpe:.2f}")
         else:
-            st.metric("Est. Sharpe", "N/A")
+            st.metric("Est. Sharpe", "N/A",
+                      help="Not calculated: historical price data was unavailable.")
 
     st.divider()
 
@@ -341,6 +341,9 @@ if st.session_state.scan_results:
     available_cols = [c for c in display_columns.keys() if c in df.columns]
     display_df = df[available_cols].copy()
     display_df.columns = [display_columns[c] for c in available_cols]
+
+    # Returns are stored as decimal fractions; scale to percent for display
+    display_df = frac_cols_to_pct(display_df, ['1M %', '3M %', '6M %', '1Y %'])
 
     # Format numeric columns
     st.dataframe(
@@ -386,23 +389,30 @@ if st.session_state.scan_results:
         st.subheader("Risk Metrics")
 
         metrics = summary['risk_metrics']
-        col1, col2, col3, col4 = st.columns(4)
 
-        with col1:
-            beta = metrics.get('portfolio_beta', 'N/A')
-            st.metric("Portfolio Beta", f"{beta:.2f}" if isinstance(beta, (int, float)) else beta)
+        if not metrics.get('data_available'):
+            st.warning(
+                "Risk metrics could not be calculated: historical price data "
+                "was unavailable. Scan results above are unaffected."
+            )
+        else:
+            col1, col2, col3, col4 = st.columns(4)
 
-        with col2:
-            vol = metrics.get('annual_volatility', 'N/A')
-            st.metric("Annual Volatility", f"{vol:.1f}%" if isinstance(vol, (int, float)) else vol)
+            with col1:
+                beta = metrics.get('portfolio_beta')
+                st.metric("Portfolio Beta", f"{beta:.2f}" if isinstance(beta, (int, float)) else "N/A")
 
-        with col3:
-            var = metrics.get('var_95', 'N/A')
-            st.metric("VaR (95%)", f"${var:,.0f}" if isinstance(var, (int, float)) else var)
+            with col2:
+                vol = metrics.get('volatility')
+                st.metric("Annual Volatility", f"{vol:.1f}%" if isinstance(vol, (int, float)) else "N/A")
 
-        with col4:
-            max_dd = metrics.get('expected_max_drawdown', 'N/A')
-            st.metric("Est. Max Drawdown", f"{max_dd:.1f}%" if isinstance(max_dd, (int, float)) else max_dd)
+            with col3:
+                var = metrics.get('var_95')
+                st.metric("VaR (95%)", f"${var:,.0f}" if isinstance(var, (int, float)) else "N/A")
+
+            with col4:
+                max_dd = metrics.get('max_drawdown')
+                st.metric("Max Drawdown (1Y)", f"{max_dd:.1f}%" if isinstance(max_dd, (int, float)) else "N/A")
 
 else:
     # No results yet

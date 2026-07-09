@@ -13,6 +13,7 @@ from database import (
     remove_from_watchlist,
     get_watchlist,
 )
+from formatting import format_pct, frac_cols_to_pct
 from components.state import init_session_state
 
 logger = get_logger('watchlist_page')
@@ -134,10 +135,10 @@ if watchlist:
             with details_col1:
                 if row.get('return_1m'):
                     color = "green" if row['return_1m'] > 0 else "red"
-                    st.markdown(f"1M Return: :{color}[{row['return_1m']*100:.1f}%]")
+                    st.markdown(f"1M Return: :{color}[{format_pct(row['return_1m'], 1)}]")
                 if row.get('return_3m'):
                     color = "green" if row['return_3m'] > 0 else "red"
-                    st.markdown(f"3M Return: :{color}[{row['return_3m']*100:.1f}%]")
+                    st.markdown(f"3M Return: :{color}[{format_pct(row['return_3m'], 1)}]")
 
             with details_col2:
                 if row.get('notes'):
@@ -155,8 +156,11 @@ if watchlist:
         display_cols = ['ticker', 'price', 'target_entry_price', 'return_1m', 'return_3m', 'sector', 'notes']
         available_cols = [c for c in display_cols if c in df.columns]
 
+        # Returns are stored as decimal fractions; scale to percent for display
+        table_df = frac_cols_to_pct(df[available_cols], ['return_1m', 'return_3m'])
+
         st.dataframe(
-            df[available_cols],
+            table_df,
             column_config={
                 'ticker': 'Ticker',
                 'price': st.column_config.NumberColumn('Price', format="$%.2f"),

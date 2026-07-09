@@ -11,6 +11,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from formatting import frac_to_pct, format_pct
+
 
 # Theme colors matching the Streamlit config
 COLORS = {
@@ -266,7 +268,7 @@ def create_returns_comparison_chart(
             fig.add_trace(go.Bar(
                 name=name,
                 x=df['Ticker'],
-                y=df[col] * 100,  # Convert to percentage
+                y=frac_to_pct(df[col]),
                 marker_color=color,
             ))
 
@@ -309,11 +311,11 @@ def create_sector_performance_chart(
         )
 
         fig = go.Figure(go.Bar(
-            x=df['Avg_Return_3M'] * 100,
+            x=frac_to_pct(df['Avg_Return_3M']),
             y=df['Sector'],
             orientation='h',
             marker_color=colors,
-            text=df['Avg_Return_3M'].apply(lambda x: f'{x*100:.1f}%'),
+            text=df['Avg_Return_3M'].apply(lambda x: format_pct(x, 1)),
             textposition='auto',
         ))
 
@@ -425,11 +427,11 @@ def create_industry_performance_chart(
         )
 
         fig = go.Figure(go.Bar(
-            x=df['Avg_Return_3M'] * 100,
+            x=frac_to_pct(df['Avg_Return_3M']),
             y=df['Industry'],
             orientation='h',
             marker_color=colors,
-            text=df['Avg_Return_3M'].apply(lambda x: f'{x*100:.1f}%'),
+            text=df['Avg_Return_3M'].apply(lambda x: format_pct(x, 1)),
             textposition='auto',
         ))
 
