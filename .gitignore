@@ -1,5 +1,6 @@
-# Databases
+# Databases (including local backups)
 *.db
+*.db.bak*
 *.sqlite
 *.sqlite3
 
