@@ -305,6 +305,24 @@ if st.session_state.scan_results:
             st.metric("Est. Sharpe", "N/A",
                       help="Not calculated: historical price data was unavailable.")
 
+    # Disclose fail-closed exclusions so an enabled filter never silently
+    # shrinks the candidate pool without explanation
+    excl_ind = summary.get('excluded_missing_indicators', 0)
+    excl_vol = summary.get('excluded_missing_avg_volume', 0)
+    if excl_ind or excl_vol:
+        notes = []
+        if excl_ind:
+            notes.append(
+                f"{excl_ind} candidate(s) excluded because their RSI/SMA/ATR "
+                f"indicators could not be computed"
+            )
+        if excl_vol:
+            notes.append(
+                f"{excl_vol} stock(s) excluded because average volume data "
+                f"was unavailable"
+            )
+        st.caption("Filter note: " + "; ".join(notes) + ".")
+
     st.divider()
 
     # Results table

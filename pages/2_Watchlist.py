@@ -82,11 +82,14 @@ if watchlist:
     # Convert to DataFrame for display
     df = pd.DataFrame(watchlist)
 
-    # Calculate distance to target if both price and target exist
+    # Calculate distance to target if both price and target exist.
+    # A ticker absent from the stocks snapshot has price NaN (which is
+    # truthy), so guard with notna, not truthiness.
     if 'price' in df.columns and 'target_entry_price' in df.columns:
         df['distance_to_target'] = df.apply(
             lambda row: ((row['price'] - row['target_entry_price']) / row['target_entry_price'] * 100)
-            if row.get('price') and row.get('target_entry_price') and row['target_entry_price'] > 0
+            if pd.notna(row.get('price')) and pd.notna(row.get('target_entry_price'))
+            and row['target_entry_price'] > 0
             else None,
             axis=1
         )
@@ -104,14 +107,15 @@ if watchlist:
                     st.caption(row['sector'])
 
             with col2:
-                if row.get('price'):
+                if pd.notna(row.get('price')):
                     st.metric("Current Price", f"${row['price']:.2f}")
                 else:
-                    st.metric("Current Price", "N/A")
+                    st.metric("Current Price", "N/A",
+                              help="Not in the latest data refresh.")
 
             with col3:
-                if row.get('target_entry_price') and row['target_entry_price'] > 0:
-                    if row.get('distance_to_target') is not None:
+                if pd.notna(row.get('target_entry_price')) and row['target_entry_price'] > 0:
+                    if pd.notna(row.get('distance_to_target')):
                         delta = f"{row['distance_to_target']:+.1f}%"
                         st.metric(
                             "Target Price",
@@ -133,10 +137,12 @@ if watchlist:
             details_col1, details_col2 = st.columns(2)
 
             with details_col1:
-                if row.get('return_1m'):
+                # notna, not truthiness: a 0.0% return is real data and NaN
+                # (ticker not in latest refresh) is truthy
+                if pd.notna(row.get('return_1m')):
                     color = "green" if row['return_1m'] > 0 else "red"
                     st.markdown(f"1M Return: :{color}[{format_pct(row['return_1m'], 1)}]")
-                if row.get('return_3m'):
+                if pd.notna(row.get('return_3m')):
                     color = "green" if row['return_3m'] > 0 else "red"
                     st.markdown(f"3M Return: :{color}[{format_pct(row['return_3m'], 1)}]")
 
