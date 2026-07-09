@@ -65,7 +65,12 @@ with st.sidebar:
                 st.success(f"Added {shares} shares of {ticker}")
                 st.rerun()
             else:
-                st.error("Failed to add position")
+                st.error(
+                    f"A position in {ticker} with entry date "
+                    f"{entry_date.isoformat()} already exists. Positions are "
+                    f"unique per ticker and entry date -- edit the existing "
+                    f"one or pick a different date."
+                )
 
 
 # Main content
@@ -120,10 +125,13 @@ with tab1:
                     st.caption(f"{pos['shares']} shares @ ${pos['entry_price']:.2f}")
 
                 with col2:
+                    # current_price is NaN (not absent) when the ticker fell
+                    # out of the latest stocks snapshot -- NaN is truthy
                     current = pos.get('current_price')
-                    if current:
+                    if current is not None and pd.notna(current):
                         st.metric("Current Price", f"${current:.2f}")
                     else:
+                        current = None
                         st.metric("Current Price", "N/A")
 
                 with col3:
@@ -131,9 +139,9 @@ with tab1:
                     st.metric("Cost Basis", f"${cost_basis:,.2f}")
 
                 with col4:
-                    pnl = pos.get('unrealized_pnl', 0)
+                    pnl = pos.get('unrealized_pnl')
                     pnl_pct = pos.get('unrealized_pnl_pct', 0)
-                    if pnl is not None:
+                    if pnl is not None and pd.notna(pnl):
                         color = "normal" if pnl >= 0 else "inverse"
                         st.metric(
                             "P&L",
@@ -142,7 +150,8 @@ with tab1:
                             delta_color=color
                         )
                     else:
-                        st.metric("P&L", "N/A")
+                        st.metric("P&L", "N/A",
+                                  help="No current price available for this ticker.")
 
                 with col5:
                     # Close position button with popover for exit price
@@ -151,7 +160,7 @@ with tab1:
                         exit_price = st.number_input(
                             "Exit Price",
                             min_value=0.01,
-                            value=float(pos.get('current_price', pos['entry_price'])),
+                            value=float(current) if current is not None else float(pos['entry_price']),
                             step=0.01,
                             key=f"exit_price_{pos['id']}"
                         )
@@ -174,8 +183,9 @@ with tab1:
                         st.caption(f"Sector: {pos['sector']}")
 
                 with details_col2:
-                    if pos.get('hqm_score_at_entry'):
-                        st.caption(f"HQM at entry: {pos['hqm_score_at_entry']:.1f}")
+                    hqm_entry = pos.get('hqm_score_at_entry')
+                    if hqm_entry is not None and pd.notna(hqm_entry):
+                        st.caption(f"HQM at entry: {hqm_entry:.1f}")
 
                 with details_col3:
                     if pos.get('entry_date'):
