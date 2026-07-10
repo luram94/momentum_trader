@@ -45,7 +45,11 @@ def get_historical_prices(
 
     try:
         tickers_str = ' '.join(tickers)
-        data = yf.download(tickers_str, period=period, interval=interval, progress=False)
+        # threads=False: threaded downloads segfault the Streamlit Cloud
+        # runtime (Python 3.14 + yfinance's curl backend); sequential is
+        # slower but stable
+        data = yf.download(tickers_str, period=period, interval=interval,
+                           progress=False, threads=False)
 
         if data.empty:
             return pd.DataFrame()

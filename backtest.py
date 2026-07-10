@@ -160,12 +160,15 @@ class BacktestEngine:
         try:
             logger.info(f"Downloading price data for {len(tickers)} tickers...")
 
+            # threads=False: threaded downloads segfault the Streamlit Cloud
+            # runtime (Python 3.14 + yfinance's curl backend); sequential
+            # adds ~1-2 min for a 200-ticker universe but is stable
             data = yf.download(
                 tickers,
                 start=start_date,
                 end=end_date,
                 progress=False,
-                threads=True,
+                threads=False,
                 timeout=60
             )
 

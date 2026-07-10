@@ -541,7 +541,9 @@ def get_technical_indicators(
 
         try:
             # Download last 30 days of data
-            data = yf.download(batch_str, period='1mo', progress=False, threads=True)
+            # threads=False: threaded downloads segfault the Streamlit Cloud
+            # runtime (Python 3.14 + yfinance's curl backend)
+            data = yf.download(batch_str, period='1mo', progress=False, threads=False)
 
             if data.empty:
                 continue

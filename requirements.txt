@@ -1,6 +1,7 @@
 # Core dependencies
-# (touching this file forces Streamlit Cloud to rebuild the environment and
-# restart the app process, which a plain code push does not)
+# (touching this file forces Streamlit Cloud to reprocess dependencies and
+# restart the app process, which a plain code push does not do when the
+# previous process has crashed)
 numpy>=1.21.0
 pandas>=1.3.0
 scipy>=1.7.0
