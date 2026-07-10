@@ -55,30 +55,36 @@ class _FakeScreener:
     def set_filter(self, filters_dict):
         self.filters = filters_dict
 
-    def screener_view(self, verbose=0):
+    def screener_view(self, limit=-1, verbose=0, columns=None, sleep_sec=1):
         return self._frame.copy()
+
+
+def _custom_frame(**overrides):
+    """Shaped like the FinViz Custom view with the columns the app requests."""
+    frame = pd.DataFrame({
+        'Ticker': ['AAA', 'BBB'],
+        'Sector': ['Technology', 'Healthcare'],
+        'Industry': ['Software', 'Biotech'],
+        'Market Cap': [5e9, 8e9],
+        'Perf Month': [0.05, 0.02],
+        'Perf Quart': [0.15, 0.08],
+        'Perf Half': [0.30, 0.12],
+        'Perf Year': [0.60, 0.25],
+        'Avg Volume': [2_500_000.0, 1_100_000.0],
+        'Price': [50.0, 120.0],
+        'Volume': [400_000.0, 900_000.0],
+    })
+    for column, values in overrides.items():
+        if values is None:
+            frame = frame.drop(columns=column)
+        else:
+            frame[column] = values
+    return frame
 
 
 class TestRefreshPipeline:
     def test_fetch_and_store_stores_real_avg_volume(self, temp_db, monkeypatch):
-        overview = pd.DataFrame({
-            'Ticker': ['AAA', 'BBB'],
-            'Market Cap': [5e9, 8e9],
-            'Price': [50.0, 120.0],
-            'Volume': [400_000.0, 900_000.0],
-            'Sector': ['Technology', 'Healthcare'],
-            'Industry': ['Software', 'Biotech'],
-        })
-        performance = pd.DataFrame({
-            'Ticker': ['AAA', 'BBB'],
-            'Perf Month': [0.05, 0.02],
-            'Perf Quart': [0.15, 0.08],
-            'Perf Half': [0.30, 0.12],
-            'Perf Year': [0.60, 0.25],
-            'Avg Volume': [2_500_000.0, 1_100_000.0],
-        })
-        monkeypatch.setattr(database, 'Overview', lambda: _FakeScreener(overview))
-        monkeypatch.setattr(database, 'Performance', lambda: _FakeScreener(performance))
+        monkeypatch.setattr(database, 'Custom', lambda: _FakeScreener(_custom_frame()))
 
         stats = database.fetch_and_store_data()
 
@@ -86,32 +92,37 @@ class TestRefreshPipeline:
         conn = sqlite3.connect(temp_db)
         rows = dict(conn.execute('SELECT ticker, avg_volume FROM stocks').fetchall())
         conn.close()
-        # Real average volume from the Performance view, not the daily volume
+        # Real average volume, not the daily volume
         assert rows['AAA'] == 2_500_000.0
         assert rows['BBB'] == 1_100_000.0
         assert database.get_stock_count() == 2
         assert database.get_data_age_hours() < 0.1
 
     def test_missing_avg_volume_column_degrades_to_null(self, temp_db, monkeypatch):
-        overview = pd.DataFrame({
-            'Ticker': ['AAA'], 'Market Cap': [5e9], 'Price': [50.0],
-            'Volume': [400_000.0], 'Sector': ['Technology'], 'Industry': ['Software'],
-        })
         # FinViz layout change: no 'Avg Volume' column -- refresh must not crash
-        performance = pd.DataFrame({
-            'Ticker': ['AAA'], 'Perf Month': [0.05], 'Perf Quart': [0.15],
-            'Perf Half': [0.30], 'Perf Year': [0.60],
-        })
-        monkeypatch.setattr(database, 'Overview', lambda: _FakeScreener(overview))
-        monkeypatch.setattr(database, 'Performance', lambda: _FakeScreener(performance))
+        frame = _custom_frame(**{'Avg Volume': None})
+        monkeypatch.setattr(database, 'Custom', lambda: _FakeScreener(frame))
 
         stats = database.fetch_and_store_data()
 
-        assert stats['total_stored'] == 1
+        assert stats['total_stored'] == 2
         conn = sqlite3.connect(temp_db)
         avg = conn.execute('SELECT avg_volume FROM stocks').fetchone()[0]
         conn.close()
         assert avg is None  # NULL, never the daily volume in disguise
+
+    def test_all_returns_missing_keeps_existing_data(self, temp_db, monkeypatch):
+        _seed_stocks(temp_db, count=3)
+        before = database.get_stock_count()
+        # FinViz layout change: a return column vanishes entirely -- the
+        # refresh must fail loudly instead of committing an emptied table
+        frame = _custom_frame(**{'Perf Year': [None, None]})
+        monkeypatch.setattr(database, 'Custom', lambda: _FakeScreener(frame))
+
+        with pytest.raises(RuntimeError, match='no stocks with complete return data'):
+            database.fetch_and_store_data()
+
+        assert database.get_stock_count() == before
 
 
 # =============================================================================
