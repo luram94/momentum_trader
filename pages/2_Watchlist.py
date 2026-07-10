@@ -7,14 +7,14 @@ Manage and track stocks of interest.
 import streamlit as st
 import pandas as pd
 
-from logger import get_logger
-from database import (
+from hqm.logger import get_logger
+from hqm.database import (
     add_to_watchlist,
     remove_from_watchlist,
     get_watchlist,
 )
-from formatting import format_pct, frac_cols_to_pct
-from components.state import init_session_state
+from hqm.formatting import format_pct, frac_cols_to_pct
+from hqm.ui.state import init_session_state
 
 logger = get_logger('watchlist_page')
 

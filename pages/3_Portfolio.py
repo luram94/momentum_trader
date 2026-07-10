@@ -8,14 +8,14 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-from logger import get_logger
-from database import (
+from hqm.logger import get_logger
+from hqm.database import (
     add_portfolio_position,
     close_portfolio_position,
     get_portfolio_positions,
     get_portfolio_summary,
 )
-from components.state import init_session_state
+from hqm.ui.state import init_session_state
 
 logger = get_logger('portfolio_page')
 

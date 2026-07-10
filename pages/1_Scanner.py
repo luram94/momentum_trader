@@ -8,19 +8,19 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-from logger import get_logger
-from config_loader import get_config
-from database import (
+from hqm.logger import get_logger
+from hqm.config_loader import get_config
+from hqm.database import (
     fetch_and_store_data,
     run_hqm_scan_from_db,
     get_data_age_hours,
     get_stock_count,
     get_sector_breakdown,
 )
-from risk_metrics import calculate_all_risk_metrics
-from formatting import frac_cols_to_pct
-from components.state import init_session_state
-from components.charts import (
+from hqm.risk_metrics import calculate_all_risk_metrics
+from hqm.formatting import frac_cols_to_pct
+from hqm.ui.state import init_session_state
+from hqm.ui.charts import (
     create_allocation_chart,
     create_hqm_score_chart,
     create_returns_comparison_chart,

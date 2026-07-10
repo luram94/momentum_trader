@@ -70,7 +70,9 @@ def setup_logging(
 
     # File handler with rotation
     if log_file:
-        log_path = Path(__file__).parent / log_file
+        from hqm.config_loader import PROJECT_ROOT
+        log_path = PROJECT_ROOT / log_file
+        log_path.parent.mkdir(parents=True, exist_ok=True)
         file_handler = RotatingFileHandler(
             log_path,
             maxBytes=max_size_mb * 1024 * 1024,
@@ -102,7 +104,7 @@ def get_logger(name: str = 'hqm') -> logging.Logger:
 
     # Try to load config for default settings
     try:
-        from config_loader import get_config
+        from hqm.config_loader import get_config
         config = get_config()
         return setup_logging(
             name=name,

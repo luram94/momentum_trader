@@ -51,6 +51,7 @@ env/
 
 # Logs
 *.log
+logs/
 hqm_scanner.log*
 
 # Testing

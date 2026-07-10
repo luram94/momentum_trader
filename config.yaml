@@ -49,7 +49,7 @@ backtest:
 logging:
   level: INFO                 # DEBUG, INFO, WARNING, ERROR, CRITICAL
   format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-  file: 'hqm_scanner.log'
+  file: 'logs/hqm_scanner.log'
   max_size_mb: 10
   backup_count: 3
   console_output: true

@@ -10,7 +10,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-from formatting import frac_to_pct, format_pct
+from hqm.formatting import frac_to_pct, format_pct
 
 
 # Theme colors matching the Streamlit config

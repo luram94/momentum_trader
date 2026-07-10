@@ -10,20 +10,16 @@ Tests for PR 3: scanner/backtest alignment and strategy assumptions.
 - Cash checks include commission, so cash can't go negative.
 """
 
-import sys
 import sqlite3
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import database
-from backtest import BacktestEngine, get_backtest_universe
-from config_loader import get_config
+import hqm.database as database
+from hqm.backtest import BacktestEngine, get_backtest_universe
+from hqm.config_loader import get_config
 
 
 def make_ohlc(closes: dict, days: int) -> dict:

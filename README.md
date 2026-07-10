@@ -72,7 +72,7 @@ python -m venv venv
 source venv/bin/activate  # Linux/Mac
 # or: venv\Scripts\activate  # Windows
 
-# Install dependencies
+# Install dependencies (use requirements-dev.txt to also get test tools)
 pip install -r requirements.txt
 
 # Run the application
@@ -145,20 +145,25 @@ momentum_trader/
 │   ├── 3_Portfolio.py     # Portfolio tracking
 │   ├── 4_Sectors.py       # Sector & industry analysis
 │   └── 5_Backtest.py      # Backtesting
-├── components/
-│   ├── charts.py          # Plotly chart helpers
-│   └── state.py           # Session state management
-├── database.py            # SQLite database management + HQM scan logic
-├── backtest.py            # Backtesting engine
-├── risk_metrics.py        # Risk calculations (Sharpe, VaR, etc.)
-├── config_loader.py       # Type-safe configuration loader
-├── logger.py              # Centralized logging
+├── hqm/                   # Core package
+│   ├── database.py        # SQLite database management + HQM scan logic
+│   ├── backtest.py        # Backtesting engine
+│   ├── risk_metrics.py    # Risk calculations (Sharpe, VaR, etc.)
+│   ├── config_loader.py   # Type-safe configuration loader
+│   ├── logger.py          # Centralized logging
+│   ├── formatting.py      # Number/percentage formatting helpers
+│   └── ui/
+│       ├── charts.py      # Plotly chart helpers
+│       └── state.py       # Session state management
+├── tests/                 # Pytest test suite
 ├── config.yaml            # Externalized configuration
-├── requirements.txt       # Python dependencies
+├── requirements.txt       # Runtime dependencies
+├── requirements-dev.txt   # Dev/test dependencies (pytest, coverage)
 ├── .streamlit/
 │   └── config.toml        # Streamlit theme configuration
-└── data/
-    └── hqm_data.db        # SQLite database (auto-generated)
+├── data/
+│   └── hqm_data.db        # SQLite database (auto-generated)
+└── logs/                  # Log output (auto-generated)
 ```
 
 ## How HQM Scoring Works
@@ -196,11 +201,14 @@ momentum_trader/
 ## Running Tests
 
 ```bash
+# Install test dependencies
+pip install -r requirements-dev.txt
+
 # Run all tests
 pytest
 
 # Run with coverage
-pytest --cov=. --cov-report=html
+pytest --cov=hqm --cov-report=html
 
 # Run specific test file
 pytest tests/test_hqm.py -v

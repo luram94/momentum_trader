@@ -6,20 +6,16 @@ against a temporary SQLite database, with only the external network calls
 (FinViz screeners, yfinance downloads) replaced by shaped fakes.
 """
 
-import sys
 import sqlite3
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import backtest
-import database
-from config_loader import load_config, get_config
+import hqm.backtest as backtest
+import hqm.database as database
+from hqm.config_loader import load_config, get_config
 
 
 @pytest.fixture

@@ -6,18 +6,14 @@ These tests exercise database.py against a temporary SQLite file (DB_PATH is
 monkeypatched), so they cover the real query paths, not a parallel schema.
 """
 
-import sys
 import sqlite3
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import database
+import hqm.database as database
 
 
 @pytest.fixture

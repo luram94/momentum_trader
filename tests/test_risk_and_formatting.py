@@ -12,18 +12,14 @@ Covers PR 1 acceptance criteria:
   once, via the formatting helpers.
 """
 
-import sys
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from formatting import frac_to_pct, format_pct, frac_cols_to_pct
-import risk_metrics
+from hqm.formatting import frac_to_pct, format_pct, frac_cols_to_pct
+import hqm.risk_metrics as risk_metrics
 
 
 # =============================================================================

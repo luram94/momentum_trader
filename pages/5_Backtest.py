@@ -8,12 +8,12 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 
-from logger import get_logger
-from config_loader import get_config
-from database import get_stock_count
-from backtest import run_backtest, get_backtest_history
-from components.state import init_session_state
-from components.charts import (
+from hqm.logger import get_logger
+from hqm.config_loader import get_config
+from hqm.database import get_stock_count
+from hqm.backtest import run_backtest, get_backtest_history
+from hqm.ui.state import init_session_state
+from hqm.ui.charts import (
     create_equity_curve,
     create_drawdown_chart,
 )

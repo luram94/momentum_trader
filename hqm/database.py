@@ -24,8 +24,8 @@ from scipy.stats import percentileofscore
 from finvizfinance.screener.performance import Performance
 from finvizfinance.screener.overview import Overview
 
-from logger import get_logger
-from config_loader import get_config
+from hqm.logger import get_logger
+from hqm.config_loader import get_config, PROJECT_ROOT
 
 # Initialize logger
 logger = get_logger('database')
@@ -51,7 +51,7 @@ def get_db_path() -> Path:
         return db_dir / 'hqm_data.db'
 
     # Local development - use configured path
-    db_path = Path(__file__).parent / config.database.path
+    db_path = PROJECT_ROOT / config.database.path
     db_path.parent.mkdir(parents=True, exist_ok=True)
     return db_path
 

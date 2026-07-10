@@ -9,7 +9,7 @@ truth); widgets bind to these keys and never pass their own defaults.
 
 import streamlit as st
 
-from config_loader import get_config
+from hqm.config_loader import get_config
 
 
 def init_session_state() -> None:

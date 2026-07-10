@@ -7,17 +7,17 @@ Sector and industry analysis and performance breakdown.
 import streamlit as st
 import pandas as pd
 
-from logger import get_logger
-from database import (
+from hqm.logger import get_logger
+from hqm.database import (
     get_sector_breakdown,
     get_sector_hqm_scores,
     get_industry_breakdown,
     get_industry_hqm_scores,
     get_stock_count,
 )
-from formatting import frac_cols_to_pct
-from components.state import init_session_state
-from components.charts import (
+from hqm.formatting import frac_cols_to_pct
+from hqm.ui.state import init_session_state
+from hqm.ui.charts import (
     create_sector_pie_chart,
     create_sector_performance_chart,
     create_industry_pie_chart,
