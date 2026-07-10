@@ -8,6 +8,7 @@ font = "sans serif"
 [server]
 headless = true
 enableXsrfProtection = true
+fileWatcherType = "none"
 
 [browser]
 gatherUsageStats = false
