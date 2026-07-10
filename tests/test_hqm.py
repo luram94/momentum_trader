@@ -11,10 +11,7 @@ Tests for core functionality including:
 import pytest
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
 from pathlib import Path
-import tempfile
-import os
 import sys
 
 # Add parent directory to path for imports
@@ -26,7 +23,7 @@ class TestConfigLoader:
 
     def test_default_config_loads(self):
         """Test that default config loads without errors."""
-        from config_loader import Config, load_config
+        from config_loader import Config
 
         config = Config()
         assert config.portfolio.default_size == 10000
@@ -41,18 +38,15 @@ class TestConfigLoader:
         assert config.min_size == 1000
         assert config.max_positions == 50
 
-    def test_indicator_config_values(self):
-        """Test indicator configuration defaults."""
-        from config_loader import RSIConfig, SMAConfig
+    def test_scanner_filter_defaults(self):
+        """Test scanner filter default configuration."""
+        from config_loader import ScannerFiltersConfig
 
-        rsi = RSIConfig()
-        assert rsi.period == 14
-        assert rsi.overbought == 70
-        assert rsi.oversold == 30
-
-        sma = SMAConfig()
-        assert sma.period == 10
-        assert sma.good_threshold == 5
+        filters = ScannerFiltersConfig()
+        assert filters.max_rsi == 70
+        assert filters.min_avg_volume == 500000
+        assert filters.max_sma10_distance == 15
+        assert filters.max_per_sector == 3
 
 
 class TestRiskMetrics:
@@ -136,64 +130,6 @@ class TestRiskMetrics:
         assert isinstance(sortino, float)
 
 
-class TestDatabaseOperations:
-    """Tests for database operations."""
-
-    @pytest.fixture
-    def temp_db(self):
-        """Create a temporary database for testing."""
-        import sqlite3
-        with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as f:
-            yield f.name
-        os.unlink(f.name)
-
-    def test_database_initialization(self, temp_db, monkeypatch):
-        """Test database schema creation."""
-        import sqlite3
-
-        # Create test database
-        conn = sqlite3.connect(temp_db)
-        cursor = conn.cursor()
-
-        # Create minimal schema for testing
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS stocks (
-                ticker TEXT PRIMARY KEY,
-                price REAL,
-                return_1m REAL
-            )
-        ''')
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS watchlist (
-                id INTEGER PRIMARY KEY,
-                ticker TEXT UNIQUE
-            )
-        ''')
-        conn.commit()
-
-        # Verify tables exist
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        tables = [row[0] for row in cursor.fetchall()]
-
-        assert 'stocks' in tables
-        assert 'watchlist' in tables
-        conn.close()
-
-    def test_data_age_calculation(self):
-        """Test data age calculation logic."""
-        from datetime import datetime, timedelta
-
-        # Test recent data
-        last_refresh = datetime.now() - timedelta(hours=2)
-        age_hours = (datetime.now() - last_refresh).total_seconds() / 3600
-        assert 1.9 < age_hours < 2.1
-
-        # Test old data
-        last_refresh = datetime.now() - timedelta(days=2)
-        age_hours = (datetime.now() - last_refresh).total_seconds() / 3600
-        assert 47 < age_hours < 49
-
-
 class TestBacktesting:
     """Tests for backtesting engine."""
 
@@ -217,7 +153,7 @@ class TestBacktesting:
     def test_rebalance_dates_weekly(self):
         """Test weekly rebalance date generation."""
         from backtest import BacktestEngine
-        from datetime import datetime, timedelta
+        from datetime import datetime
 
         engine = BacktestEngine(rebalance_frequency='weekly')
 
@@ -274,58 +210,13 @@ class TestHQMStrategy:
         pct_high = percentileofscore(returns, 0.30, kind='mean')
         assert pct_high > 90
 
-    def test_hqm_score_calculation(self):
-        """Test HQM score as average of percentiles."""
-        percentiles = [80, 85, 75, 90]  # 1M, 3M, 6M, 1Y
-        hqm_score = sum(percentiles) / len(percentiles)
-
-        assert hqm_score == 82.5
-
-    def test_quality_filter(self):
-        """Test quality momentum filter (min percentile threshold)."""
-        min_threshold = 25
-
-        # Should pass - all above 25
-        percentiles_good = [30, 40, 50, 60]
-        min_pct = min(percentiles_good)
-        assert min_pct >= min_threshold
-
-        # Should fail - one below 25
-        percentiles_bad = [20, 40, 50, 60]
-        min_pct = min(percentiles_bad)
-        assert min_pct < min_threshold
-
-    def test_position_sizing(self):
-        """Test equal-weight position sizing."""
-        portfolio_size = 10000
-        num_positions = 8
-
-        allocation = portfolio_size / num_positions
-        assert allocation == 1250
-
-        weight = 100 / num_positions
-        assert weight == 12.5
-
-    def test_share_calculation(self):
-        """Test share count calculation."""
-        import math
-
-        allocation = 1250
-        price = 150.50
-
-        shares = math.floor(allocation / price)
-        assert shares == 8
-
-        actual_value = shares * price
-        assert actual_value == 1204.00
-
 
 class TestLogger:
     """Tests for logging functionality."""
 
     def test_logger_creation(self):
         """Test logger creation."""
-        from logger import setup_logging, get_logger
+        from logger import setup_logging
 
         logger = setup_logging(name='test_logger', console_output=False)
         assert logger is not None

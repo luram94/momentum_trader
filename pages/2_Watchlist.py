@@ -29,6 +29,15 @@ init_session_state()
 st.title("Watchlist")
 st.markdown("Track stocks you're interested in for potential entry.")
 
+st.warning(
+    "**Shared demo storage** -- this app has no user accounts. Watchlist "
+    "entries live in a single shared database: on the public deployment "
+    "they are visible to every visitor and are erased whenever the app "
+    "restarts or redeploys. Run the app locally for private, persistent "
+    "tracking.",
+    icon="⚠️",
+)
+
 # Add to watchlist form
 with st.sidebar:
     st.header("Add to Watchlist")
@@ -43,17 +52,6 @@ with st.sidebar:
             help="Leave at 0 to skip"
         )
         notes = st.text_area("Notes", placeholder="Why are you watching this stock?")
-        alert_enabled = st.checkbox("Enable Alerts")
-
-        alert_threshold = None
-        if alert_enabled:
-            alert_threshold = st.number_input(
-                "Alert Threshold (SMA Distance %)",
-                min_value=0.0,
-                max_value=20.0,
-                value=5.0,
-                step=0.5,
-            )
 
         submitted = st.form_submit_button("Add to Watchlist", type="primary", use_container_width=True)
 
@@ -62,8 +60,6 @@ with st.sidebar:
                 ticker=ticker,
                 target_price=target_price if target_price > 0 else None,
                 notes=notes if notes else None,
-                alert_enabled=alert_enabled,
-                alert_threshold=alert_threshold,
             )
 
             if success:
@@ -149,8 +145,6 @@ if watchlist:
             with details_col2:
                 if row.get('notes'):
                     st.markdown(f"**Notes:** {row['notes']}")
-                if row.get('alert_enabled'):
-                    st.markdown(f"🔔 Alert enabled (threshold: {row.get('alert_threshold', 5)}%)")
 
             if row.get('added_date'):
                 st.caption(f"Added: {row['added_date']}")
@@ -189,7 +183,6 @@ else:
     1. **Track High HQM Stocks**: Add stocks from your scans that you want to monitor
     2. **Set Target Prices**: Define entry points based on SMA10 distance
     3. **Add Notes**: Record why you're interested in each stock
-    4. **Enable Alerts**: Get notified when stocks approach your targets
 
     The watchlist will show current prices from the last data refresh.
     """)

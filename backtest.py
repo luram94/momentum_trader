@@ -8,9 +8,8 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional
 
-import numpy as np
 import pandas as pd
 import yfinance as yf
 
@@ -727,7 +726,6 @@ class BacktestEngine:
         start_dt = datetime.strptime(start_date, '%Y-%m-%d')
         end_dt = datetime.strptime(end_date, '%Y-%m-%d')
         rebalance_dates = self._get_rebalance_dates(start_dt, end_dt)
-        rebalance_dates_set = set(rebalance_dates)
 
         update_progress(25, "Running simulation...")
 

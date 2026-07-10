@@ -11,7 +11,6 @@ Calculate portfolio risk metrics including:
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -91,7 +90,7 @@ def calculate_returns(prices: pd.DataFrame) -> pd.DataFrame:
 def calculate_sharpe_ratio(
     returns: pd.Series,
     risk_free_rate: Optional[float] = None,
-    periods_per_year: int = 252
+    periods_per_year: Optional[int] = None
 ) -> float:
     """
     Calculate annualized Sharpe Ratio.
@@ -99,13 +98,15 @@ def calculate_sharpe_ratio(
     Args:
         returns: Series of returns
         risk_free_rate: Annual risk-free rate (uses config default if None)
-        periods_per_year: Trading periods per year (252 for daily)
+        periods_per_year: Trading periods per year (config default if None)
 
     Returns:
         Sharpe Ratio
     """
     if risk_free_rate is None:
         risk_free_rate = config.risk.risk_free_rate
+    if periods_per_year is None:
+        periods_per_year = config.risk.sharpe_period_days
 
     if len(returns) == 0:
         return 0.0
@@ -124,38 +125,6 @@ def calculate_sharpe_ratio(
     sharpe = (excess_returns.mean() / std) * np.sqrt(periods_per_year)
 
     return round(sharpe, 3)
-
-
-def calculate_portfolio_sharpe(
-    tickers: List[str],
-    weights: List[float],
-    period: str = '1y'
-) -> float:
-    """
-    Calculate Sharpe Ratio for a weighted portfolio.
-
-    Args:
-        tickers: List of ticker symbols
-        weights: Portfolio weights (should sum to 1)
-        period: Historical period for calculation
-
-    Returns:
-        Portfolio Sharpe Ratio
-    """
-    prices = get_historical_prices(tickers, period=period)
-    if prices.empty:
-        return 0.0
-
-    returns = calculate_returns(prices)
-
-    # Normalize weights
-    weights = np.array(weights)
-    weights = weights / weights.sum()
-
-    # Calculate portfolio returns
-    portfolio_returns = (returns * weights).sum(axis=1)
-
-    return calculate_sharpe_ratio(portfolio_returns)
 
 
 def calculate_max_drawdown(prices: pd.Series) -> Tuple[float, str, str]:
@@ -189,47 +158,6 @@ def calculate_max_drawdown(prices: pd.Series) -> Tuple[float, str, str]:
         str(peak_idx.date()) if hasattr(peak_idx, 'date') else str(peak_idx),
         str(trough_idx.date()) if hasattr(trough_idx, 'date') else str(trough_idx)
     )
-
-
-def calculate_portfolio_drawdown(
-    tickers: List[str],
-    weights: List[float],
-    period: str = '1y'
-) -> Dict[str, Any]:
-    """
-    Calculate maximum drawdown for a weighted portfolio.
-
-    Args:
-        tickers: List of ticker symbols
-        weights: Portfolio weights
-        period: Historical period
-
-    Returns:
-        Dict with drawdown metrics
-    """
-    prices = get_historical_prices(tickers, period=period)
-    if prices.empty:
-        return {'max_drawdown': 0, 'peak_date': '', 'trough_date': ''}
-
-    returns = calculate_returns(prices)
-
-    # Normalize weights
-    weights = np.array(weights)
-    weights = weights / weights.sum()
-
-    # Calculate portfolio returns
-    portfolio_returns = (returns * weights).sum(axis=1)
-
-    # Calculate cumulative returns (price series)
-    portfolio_value = (1 + portfolio_returns).cumprod()
-
-    max_dd, peak, trough = calculate_max_drawdown(portfolio_value)
-
-    return {
-        'max_drawdown': max_dd,
-        'peak_date': peak,
-        'trough_date': trough
-    }
 
 
 def calculate_beta(
@@ -492,44 +420,3 @@ def calculate_all_risk_metrics(
     logger.info(f"Risk metrics calculated: Sharpe={sharpe}, Beta={portfolio_beta}, MaxDD={max_dd}%")
 
     return metrics
-
-
-def get_individual_stock_metrics(
-    ticker: str,
-    period: str = '1y'
-) -> Dict[str, Any]:
-    """
-    Get risk metrics for an individual stock.
-
-    Args:
-        ticker: Stock ticker symbol
-        period: Historical period
-
-    Returns:
-        Dict with stock metrics
-    """
-    prices = get_historical_prices([ticker, config.risk.benchmark], period=period)
-
-    if prices.empty or ticker not in prices.columns:
-        return {
-            'beta': 1.0,
-            'volatility': 0,
-            'sharpe': 0,
-            'max_drawdown': 0
-        }
-
-    returns = calculate_returns(prices)
-
-    stock_returns = returns[ticker]
-    sharpe = calculate_sharpe_ratio(stock_returns)
-    volatility = calculate_volatility(stock_returns)
-    beta = calculate_beta(ticker, period=period)
-
-    max_dd, _, _ = calculate_max_drawdown(prices[ticker])
-
-    return {
-        'beta': beta,
-        'volatility': round(volatility * 100, 2),
-        'sharpe': sharpe,
-        'max_drawdown': max_dd
-    }

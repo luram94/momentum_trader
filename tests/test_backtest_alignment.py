@@ -21,7 +21,6 @@ import pytest
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import backtest
 import database
 from backtest import BacktestEngine, get_backtest_universe
 from config_loader import get_config

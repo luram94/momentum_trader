@@ -43,6 +43,11 @@ By requiring consistency across all timeframes, the strategy filters out stocks 
 - **Portfolio Tracking**: Log positions and monitor P&L
 - **Sector & Industry Analysis**: Performance breakdown by sector and industry, with drill-down by sector
 
+> **Note**: The app has no user accounts. On the public demo deployment,
+> Watchlist and Portfolio data is stored in a single shared, ephemeral
+> database — it is visible to all visitors and resets on redeploy. Run the
+> app locally for private, persistent tracking.
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -109,19 +114,17 @@ data:
   min_market_cap: '+Mid (over $2bln)'
   cache_expiry_hours: 24
 
-# Strategy Settings
+# Strategy Settings (shared by scanner and backtest)
 strategy:
   min_percentile_threshold: 25
 
-# Technical Indicators
-indicators:
-  rsi:
-    period: 14
-    overbought: 70
-    oversold: 30
-  sma:
-    period: 10
-    good_threshold: 5
+# Scanner Filter Defaults (initial UI values; filters are opt-in)
+scanner_filters:
+  max_sma10_distance: 15
+  max_rsi: 70
+  min_avg_volume: 500000
+  max_atr_percent: 10
+  max_per_sector: 3
 
 # Backtesting
 backtest:
@@ -145,8 +148,7 @@ momentum_trader/
 ├── components/
 │   ├── charts.py          # Plotly chart helpers
 │   └── state.py           # Session state management
-├── momentum.py            # Core HQM strategy algorithm
-├── database.py            # SQLite database management
+├── database.py            # SQLite database management + HQM scan logic
 ├── backtest.py            # Backtesting engine
 ├── risk_metrics.py        # Risk calculations (Sharpe, VaR, etc.)
 ├── config_loader.py       # Type-safe configuration loader
