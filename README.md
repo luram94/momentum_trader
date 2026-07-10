@@ -2,7 +2,7 @@
 
 A comprehensive web application implementing the **High Quality Momentum (HQM) investment strategy**, inspired by Qullamaggie's quantitative trading approach. It identifies stocks showing consistent "slow and steady" momentum across multiple timeframes, with advanced features for backtesting, risk analysis, and portfolio management.
 
-**Live Demo**: [momentumtrader.streamlit.app](https://momentumtrader.streamlit.app)
+**Live Demo**: [momentumtrader-main.streamlit.app](https://momentumtrader-main.streamlit.app)
 
 ## Strategy Overview
 
