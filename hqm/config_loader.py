@@ -91,6 +91,7 @@ class LoggingConfig:
 class RateLimitsConfig:
     """API rate limiting configuration."""
     yfinance_batch_size: int = 50
+    finviz_sleep_sec: float = 0.3
 
 
 @dataclass

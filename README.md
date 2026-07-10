@@ -95,7 +95,7 @@ rebuilds.
 
 ### Web Application Workflow
 
-1. **Refresh Data**: Click "Refresh" to fetch latest stock data from FinViz (~3-5 min)
+1. **Refresh Data**: Click "Refresh" to fetch latest stock data from FinViz (~1-2 min)
 2. **Configure Scan**: Set portfolio size, positions, and filters
 3. **Run Scan**: Calculate HQM scores and generate recommendations
 4. **Analyze Results**: Review stocks, sectors, and risk metrics

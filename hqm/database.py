@@ -21,8 +21,7 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 from scipy.stats import percentileofscore
-from finvizfinance.screener.performance import Performance
-from finvizfinance.screener.overview import Overview
+from finvizfinance.screener.custom import Custom
 
 from hqm.logger import get_logger
 from hqm.config_loader import get_config, PROJECT_ROOT
@@ -351,6 +350,12 @@ def get_data_age_hours() -> float:
     return (datetime.now() - last_refresh).total_seconds() / 3600
 
 
+# FinViz Custom-view column ids (finvizfinance.constants.CUSTOM_SCREENER_COLUMNS):
+# 1=Ticker, 3=Sector, 4=Industry, 6=Market Cap, 43/44/45/46=Perf Month/
+# Quarter/Half Year/Year, 63=Average Volume, 65=Price, 67=Volume
+_CUSTOM_SCREENER_COLUMNS = [1, 3, 4, 6, 43, 44, 45, 46, 63, 65, 67]
+
+
 def fetch_and_store_data(
     progress_callback: Optional[Callable[[int, str], None]] = None
 ) -> Dict[str, Any]:
@@ -389,39 +394,37 @@ def fetch_and_store_data(
         logger.info(f"Fetching data for {exchange}")
 
         try:
-            # Get Overview data (includes sector)
             filters = {'Exchange': exchange, 'Market Cap.': config.data.min_market_cap}
 
-            screener_overview = Overview()
-            screener_overview.set_filter(filters_dict=filters)
-            df_overview = screener_overview.screener_view(verbose=0)
-            df_base = df_overview[['Ticker', 'Market Cap', 'Price', 'Volume', 'Sector', 'Industry']].copy()
+            # Single Custom screen with exactly the columns we need. FinViz
+            # serves 20 rows per page, so one screen instead of the old
+            # Overview + Performance pair halves the page requests.
+            screener = Custom()
+            screener.set_filter(filters_dict=filters)
+            df_merged = screener.screener_view(
+                # Custom's default limit=-1 stops the page loop after one
+                # page; pass the same effectively-unlimited value Overview uses
+                limit=100000,
+                verbose=0,
+                columns=_CUSTOM_SCREENER_COLUMNS,
+                sleep_sec=config.rate_limits.finviz_sleep_sec,
+            )
 
-            update_progress(20 + (i * 35), f'Fetching {exchange} performance...')
-
-            # Get Performance data (includes the real Avg Volume)
-            screener_perf = Performance()
-            screener_perf.set_filter(filters_dict=filters)
-            df_perf = screener_perf.screener_view(verbose=0)
-
-            perf_rename = {
+            rename = {
                 'Perf Month': 'Return_1M',
                 'Perf Quart': 'Return_3M',
                 'Perf Half': 'Return_6M',
                 'Perf Year': 'Return_1Y',
                 'Avg Volume': 'Avg_Volume',
+                'Market Cap': 'Market_Cap',
             }
-            # Select defensively: if FinViz drops a column, keep going with
-            # what exists rather than crashing the whole refresh.
-            perf_available = ['Ticker'] + [c for c in perf_rename if c in df_perf.columns]
-            missing_perf = [c for c in perf_rename if c not in df_perf.columns]
-            if missing_perf:
-                logger.warning(f"Performance view missing columns {missing_perf}; storing NULL for them")
-            df_returns = df_perf[perf_available].rename(columns=perf_rename)
-
-            # Merge
-            df_merged = pd.merge(df_base, df_returns, on='Ticker', how='inner')
-            df_merged = df_merged.rename(columns={'Market Cap': 'Market_Cap'})
+            # If FinViz drops an optional column (Avg Volume), rows store
+            # NULL for it; a missing required column fails loudly below,
+            # before the old data is deleted.
+            missing = [c for c in rename if c not in df_merged.columns]
+            if missing:
+                logger.warning(f"Custom view missing columns {missing}")
+            df_merged = df_merged.rename(columns=rename)
             df_merged['Exchange'] = exchange
 
             all_data.append(df_merged)
@@ -446,6 +449,12 @@ def fetch_and_store_data(
     # Remove rows with missing return data
     return_columns = ['Return_1M', 'Return_3M', 'Return_6M', 'Return_1Y']
     df = df.dropna(subset=return_columns)
+
+    if df.empty:
+        raise RuntimeError(
+            'FinViz returned no stocks with complete return data; '
+            'keeping existing database contents'
+        )
 
     # Store in database
     conn = get_connection()

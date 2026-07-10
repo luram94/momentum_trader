@@ -57,6 +57,8 @@ logging:
 # API Rate Limiting
 rate_limits:
   yfinance_batch_size: 50     # Batch size for yfinance downloads
+  finviz_sleep_sec: 0.3       # Pause between FinViz page requests (20 rows/page);
+                              # raising it slows refresh, lowering it risks FinViz blocking
 
 # Database Settings
 database:
