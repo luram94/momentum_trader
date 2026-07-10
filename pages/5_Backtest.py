@@ -245,6 +245,20 @@ if st.session_state.backtest_results:
     with col4:
         st.metric("Commission Paid", f"${results['total_commission']:,.2f}")
 
+    # Universe disclosure
+    if results.get('universe_used'):
+        cap_note = ""
+        if results.get('universe_capped'):
+            cap_note = (
+                f" (capped from {results['universe_requested']} to the "
+                f"{results['max_tickers']} largest stocks by market cap)"
+            )
+        st.caption(
+            f"Universe: {results['universe_used']} tickers{cap_note}; "
+            f"{results.get('universe_with_history', 0)} had the full year of "
+            f"price history the strategy requires."
+        )
+
     # Stop-loss metrics (if enabled)
     if results.get('parameters', {}).get('use_stop_loss', False):
         st.divider()
@@ -347,6 +361,8 @@ if st.session_state.backtest_results:
             with col1:
                 st.write(f"**Initial Capital:** ${params['initial_capital']:,}")
                 st.write(f"**Positions:** {params['num_positions']}")
+                if 'min_percentile' in params:
+                    st.write(f"**Min Percentile (quality filter):** {params['min_percentile']}")
 
             with col2:
                 st.write(f"**Rebalance:** {params['rebalance_frequency']}")
@@ -396,14 +412,22 @@ else:
 st.divider()
 
 with st.expander("About HQM Backtesting", expanded=False):
-    st.markdown("""
+    st.markdown(f"""
     ### How the Backtest Works
 
-    1. **Universe**: Uses all stocks from the database
-    2. **Selection**: Calculates HQM scores at each rebalance date
-    3. **Ranking**: Selects top N stocks by HQM score
+    1. **Universe**: Stocks from the database, ordered by market cap (largest
+       first) and capped at 200 tickers -- deterministic, so the same data
+       always produces the same universe
+    2. **History requirement**: Every stock needs a full year (252 trading
+       days) of price history so all four returns (1M/3M/6M/1Y) are real;
+       recent listings are excluded rather than given fabricated returns
+    3. **Selection**: Calculates HQM scores at each rebalance date using the
+       **same quality filter as the live scanner** (minimum
+       {config.strategy.min_percentile_threshold}th percentile in every
+       timeframe)
     4. **Allocation**: Equal-weight across all positions
-    5. **Rebalancing**: Adjusts portfolio at specified frequency
+    5. **Rebalancing**: Two-sided -- trims overweight positions and adds to
+       underweight ones at the specified frequency
 
     ### Qullamaggie Stop-Loss Strategy
 
@@ -423,8 +447,15 @@ with st.expander("About HQM Backtesting", expanded=False):
 
     ### Limitations
 
-    - **Survivorship bias**: Only includes currently tradable stocks
-    - **Look-ahead bias**: Uses data available at backtest runtime
+    - **Survivorship bias**: The universe is built from *today's* screener
+      results, so delisted or since-shrunk stocks are missing -- returns are
+      likely overstated
+    - **Universe cap**: Only the 200 largest stocks by market cap are
+      simulated; the live scanner ranks the full ~2,000-stock universe
+    - **No technical filters**: The scanner's optional RSI / SMA10 / ATR
+      filters are **not** applied in the backtest
+    - **Percentiles are relative to the backtest universe**, not the full
+      screener universe the scanner ranks against
     - **Market impact**: Does not account for large position sizes
 
     ### Interpreting Results

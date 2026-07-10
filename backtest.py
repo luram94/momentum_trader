@@ -28,6 +28,10 @@ class BacktestEngine:
     Engine for backtesting the HQM momentum strategy.
     """
 
+    # Trading days of history required per ticker: a full year, so the
+    # 1-year return is real instead of a shorter horizon in disguise
+    MIN_HISTORY_DAYS = 252
+
     def __init__(
         self,
         initial_capital: float = 10000,
@@ -38,7 +42,9 @@ class BacktestEngine:
         use_stop_loss: bool = True,
         partial_exit_pct: float = 0.5,
         partial_exit_days: int = 4,
-        trailing_ma_period: int = 10
+        trailing_ma_period: int = 10,
+        min_percentile: Optional[float] = None,
+        max_tickers: int = 200
     ):
         """
         Initialize backtest engine.
@@ -53,12 +59,23 @@ class BacktestEngine:
             partial_exit_pct: Percentage of position to sell at partial exit (0.33-0.5)
             partial_exit_days: Days before partial exit (3-5)
             trailing_ma_period: Moving average period for trailing stop (10 or 20)
+            min_percentile: Quality filter threshold. Defaults to the same
+                config value the live scanner uses, so the backtest tests the
+                strategy that actually trades.
+            max_tickers: Cap on universe size (yfinance struggles with too
+                many). The universe must be ordered deterministically before
+                the cap is applied -- see get_backtest_universe().
         """
         self.initial_capital = initial_capital
         self.num_positions = num_positions
         self.rebalance_frequency = rebalance_frequency
         self.slippage_pct = slippage_pct / 100
         self.commission = commission
+        self.min_percentile = (
+            min_percentile if min_percentile is not None
+            else config.strategy.min_percentile_threshold
+        )
+        self.max_tickers = max_tickers
 
         # Qullamaggie stop-loss settings
         self.use_stop_loss = use_stop_loss
@@ -75,6 +92,11 @@ class BacktestEngine:
         self.stop_loss_exits = 0
         self.trailing_stop_exits = 0
         self.partial_exits = 0
+
+        # Universe stats (filled by run) for disclosure in results
+        self.universe_requested = 0
+        self.universe_used = 0
+        self.universe_with_history = 0
 
     def _get_rebalance_dates(
         self,
@@ -129,11 +151,12 @@ class BacktestEngine:
         if not tickers:
             return {'Close': pd.DataFrame(), 'High': pd.DataFrame(), 'Low': pd.DataFrame()}
 
-        # Limit tickers to avoid timeout (yfinance can struggle with too many)
-        max_tickers = 200
-        if len(tickers) > max_tickers:
-            logger.warning(f"Limiting from {len(tickers)} to {max_tickers} tickers for backtest")
-            tickers = tickers[:max_tickers]
+        # Cap universe size to avoid yfinance timeouts. The caller provides a
+        # deterministically ordered list (largest market cap first), so the
+        # cap keeps the same tickers on every run.
+        if len(tickers) > self.max_tickers:
+            logger.warning(f"Capping universe from {len(tickers)} to {self.max_tickers} tickers for backtest")
+            tickers = tickers[:self.max_tickers]
 
         try:
             logger.info(f"Downloading price data for {len(tickers)} tickers...")
@@ -375,20 +398,31 @@ class BacktestEngine:
         self,
         ohlc_data: Dict[str, pd.DataFrame],
         date_idx: int,
-        min_data_days: int = 63
+        min_data_days: Optional[int] = None
     ) -> pd.DataFrame:
         """
         Calculate HQM scores at a specific point in time.
 
+        Mirrors the live scanner: every stock needs real 1M/3M/6M/1Y returns
+        (a full year of history) and passes the same configured
+        min-percentile quality filter. No fabricated returns -- previously
+        missing 6M/1Y returns were substituted with shorter horizons, which
+        biased scores toward recent listings and diverged from the strategy
+        the scanner actually trades.
+
         Args:
             ohlc_data: Dict with 'Close', 'High', 'Low' DataFrames
             date_idx: Index of current date in prices
-            min_data_days: Minimum days of data required (default 63 for 3-month returns)
+            min_data_days: Minimum trading days of history required
+                (defaults to MIN_HISTORY_DAYS, one full year)
 
         Returns:
             DataFrame with HQM scores
         """
         prices = ohlc_data['Close']
+
+        if min_data_days is None:
+            min_data_days = self.MIN_HISTORY_DAYS
 
         if date_idx < min_data_days:
             logger.debug(f"Skipping date_idx {date_idx}: need at least {min_data_days} days")
@@ -412,23 +446,13 @@ class BacktestEngine:
                     skipped_nan += 1
                     continue
 
-                # Calculate returns for available periods
-                return_1m = (current_price / ticker_prices.iloc[-21] - 1) if len(ticker_prices) >= 21 else None
-                return_3m = (current_price / ticker_prices.iloc[-63] - 1) if len(ticker_prices) >= 63 else None
-                return_6m = (current_price / ticker_prices.iloc[-126] - 1) if len(ticker_prices) >= 126 else None
-                return_1y = (current_price / ticker_prices.iloc[-252] - 1) if len(ticker_prices) >= 252 else None
-
-                # Need at least 3-month return to be useful
-                if return_3m is None:
-                    continue
-
                 results.append({
                     'Ticker': ticker,
                     'Price': current_price,
-                    'Return_1M': return_1m if return_1m is not None else 0,
-                    'Return_3M': return_3m,
-                    'Return_6M': return_6m if return_6m is not None else return_3m,
-                    'Return_1Y': return_1y if return_1y is not None else return_6m if return_6m is not None else return_3m
+                    'Return_1M': current_price / ticker_prices.iloc[-21] - 1,
+                    'Return_3M': current_price / ticker_prices.iloc[-63] - 1,
+                    'Return_6M': current_price / ticker_prices.iloc[-126] - 1,
+                    'Return_1Y': current_price / ticker_prices.iloc[-252] - 1,
                 })
 
             except Exception as e:
@@ -442,28 +466,23 @@ class BacktestEngine:
 
         df = pd.DataFrame(results)
 
-        # Calculate percentile scores
+        # Calculate percentile scores (all returns are real -- rows with
+        # missing data never reach this point)
         from scipy.stats import percentileofscore
 
         for period in ['1M', '3M', '6M', '1Y']:
             col = f'Return_{period}'
-            pct_col = f'Pct_{period}'
-            valid_returns = df[col].dropna()
-            if len(valid_returns) > 0:
-                df[pct_col] = df[col].apply(
-                    lambda x: percentileofscore(valid_returns, x, kind='mean')
-                    if pd.notna(x) else 50
-                )
-            else:
-                df[pct_col] = 50
+            df[f'Pct_{period}'] = df[col].apply(
+                lambda x: percentileofscore(df[col], x, kind='mean')
+            )
 
         # Calculate HQM Score
         pct_cols = ['Pct_1M', 'Pct_3M', 'Pct_6M', 'Pct_1Y']
         df['HQM_Score'] = df[pct_cols].mean(axis=1)
         df['Min_Pct'] = df[pct_cols].min(axis=1)
 
-        # Filter quality momentum (relaxed threshold for backtesting)
-        df = df[df['Min_Pct'] >= 20]
+        # Quality filter: same threshold as the live scanner
+        df = df[df['Min_Pct'] >= self.min_percentile]
 
         # Sort by HQM Score
         df = df.sort_values('HQM_Score', ascending=False)
@@ -517,27 +536,45 @@ class BacktestEngine:
                 diff_value = target_value - current_value
 
                 if abs(diff_value) > 100:  # Only adjust if difference > $100
-                    shares_diff = int(diff_value / current_price)
-                    if shares_diff > 0 and self.cash >= shares_diff * current_price:
-                        # Buy more
+                    if diff_value > 0:
+                        # Buy more to reach target weight
+                        shares_diff = int(diff_value / current_price)
                         cost = shares_diff * current_price + self.commission
-                        self.cash -= cost
-                        self.positions[ticker]['shares'] += shares_diff
-                        self.positions[ticker]['initial_shares'] = self.positions[ticker]['shares']
+                        if shares_diff > 0 and self.cash >= cost:
+                            self.cash -= cost
+                            self.positions[ticker]['shares'] += shares_diff
+                            self.positions[ticker]['initial_shares'] = self.positions[ticker]['shares']
 
-                        self.trades.append({
-                            'date': date,
-                            'ticker': ticker,
-                            'action': 'BUY',
-                            'shares': shares_diff,
-                            'price': current_price,
-                            'value': cost
-                        })
+                            self.trades.append({
+                                'date': date,
+                                'ticker': ticker,
+                                'action': 'BUY',
+                                'shares': shares_diff,
+                                'price': current_price,
+                                'value': cost
+                            })
+                    else:
+                        # Trim overweight position back to target weight.
+                        # Rebalancing was previously one-sided (buy only), so
+                        # winners drifted above their equal-weight target.
+                        shares_to_sell = min(
+                            int(-diff_value / close_prices[ticker]),
+                            self.positions[ticker]['shares']
+                        )
+                        if shares_to_sell > 0:
+                            self._close_position(
+                                ticker, close_prices[ticker], date,
+                                'rebalance_trim', shares_to_sell
+                            )
+                            if ticker in self.positions:
+                                self.positions[ticker]['initial_shares'] = (
+                                    self.positions[ticker]['shares']
+                                )
             else:
                 # Open new position
                 shares = int(target_value / current_price)
-                if shares > 0 and self.cash >= shares * current_price:
-                    cost = shares * current_price + self.commission
+                cost = shares * current_price + self.commission
+                if shares > 0 and self.cash >= cost:
                     self.cash -= cost
 
                     # Calculate stop-loss price (Qullamaggie style)
@@ -652,9 +689,12 @@ class BacktestEngine:
 
         update_progress(5, "Fetching historical data...")
 
-        # Fetch price data
-        # Add buffer for lookback calculations (1 year + margin)
-        buffer_start = (datetime.strptime(start_date, '%Y-%m-%d') - timedelta(days=400)).strftime('%Y-%m-%d')
+        self.universe_requested = len(tickers)
+
+        # Fetch price data with a buffer before the start date so the 1-year
+        # lookback has real history: 420 calendar days ~ 289 trading days,
+        # comfortably above MIN_HISTORY_DAYS (252).
+        buffer_start = (datetime.strptime(start_date, '%Y-%m-%d') - timedelta(days=420)).strftime('%Y-%m-%d')
 
         logger.info(f"Fetching price data from {buffer_start} to {end_date} for {len(tickers)} tickers")
         ohlc_data = self._fetch_historical_data(tickers, buffer_start, end_date)
@@ -666,8 +706,17 @@ class BacktestEngine:
         prices = ohlc_data['Close']
 
         # Log data quality info
-        valid_tickers = [t for t in prices.columns if prices[t].notna().sum() > 63]
-        logger.info(f"Fetched data for {len(prices.columns)} tickers, {len(valid_tickers)} have sufficient data")
+        self.universe_used = len(prices.columns)
+        valid_tickers = [
+            t for t in prices.columns
+            if prices[t].notna().sum() >= self.MIN_HISTORY_DAYS
+        ]
+        self.universe_with_history = len(valid_tickers)
+        logger.info(
+            f"Fetched data for {self.universe_used} tickers, "
+            f"{self.universe_with_history} have the required "
+            f"{self.MIN_HISTORY_DAYS} trading days of history"
+        )
 
         if len(valid_tickers) < self.num_positions:
             logger.warning(f"Only {len(valid_tickers)} tickers have enough data for {self.num_positions} positions")
@@ -685,15 +734,23 @@ class BacktestEngine:
         # Get all trading days in the backtest period
         trading_days = prices.index.tolist()
 
-        # Find start index (after buffer period, need 63 days minimum)
+        # Find start index (after buffer period; the 1-year lookback needs a
+        # full year of prior trading days)
         start_idx = None
         for i, day in enumerate(trading_days):
-            if day >= start_dt and i >= 63:
+            if day >= start_dt and i >= self.MIN_HISTORY_DAYS:
                 start_idx = i
                 break
 
         if start_idx is None:
-            return {'success': False, 'error': 'Insufficient data for backtest period'}
+            return {
+                'success': False,
+                'error': (
+                    'Insufficient data for backtest period: the strategy '
+                    f'needs {self.MIN_HISTORY_DAYS} trading days of history '
+                    'before the start date.'
+                )
+            }
 
         total_days = len(trading_days) - start_idx
         rebalances_with_trades = 0
@@ -838,6 +895,12 @@ class BacktestEngine:
             'trailing_stop_exits': self.trailing_stop_exits,
             'partial_exits': self.partial_exits,
             'avg_days_held': round(avg_days_held, 1),
+            # Universe disclosure
+            'universe_requested': self.universe_requested,
+            'universe_used': self.universe_used,
+            'universe_with_history': self.universe_with_history,
+            'universe_capped': self.universe_requested > self.max_tickers,
+            'max_tickers': self.max_tickers,
             'portfolio_history': history_df.reset_index().to_dict('records'),
             'trades': self.trades,
             'parameters': {
@@ -849,7 +912,8 @@ class BacktestEngine:
                 'use_stop_loss': self.use_stop_loss,
                 'partial_exit_pct': self.partial_exit_pct,
                 'partial_exit_days': self.partial_exit_days,
-                'trailing_ma_period': self.trailing_ma_period
+                'trailing_ma_period': self.trailing_ma_period,
+                'min_percentile': self.min_percentile
             }
         }
 
@@ -891,6 +955,31 @@ class BacktestEngine:
 
         except Exception as e:
             logger.error(f"Failed to save backtest results: {e}")
+
+
+def get_backtest_universe(limit: Optional[int] = None) -> List[str]:
+    """
+    Get a deterministic backtest universe from the stocks database.
+
+    Ordered by market cap (largest first) with ticker as tiebreak, so two
+    runs against the same data always test the same universe -- previously
+    the universe came from an unordered SELECT and an arbitrary truncation,
+    making results non-reproducible on databases larger than the cap.
+
+    Args:
+        limit: Optional cap on universe size.
+
+    Returns:
+        List of tickers, largest market cap first.
+    """
+    conn = get_connection()
+    df = pd.read_sql_query(
+        'SELECT ticker FROM stocks ORDER BY market_cap DESC, ticker ASC', conn
+    )
+    conn.close()
+
+    tickers = df['ticker'].tolist()
+    return tickers[:limit] if limit else tickers
 
 
 def run_backtest(
@@ -940,12 +1029,9 @@ def run_backtest(
         start_dt = datetime.now() - timedelta(days=config.backtest.default_period_days)
         start_date = start_dt.strftime('%Y-%m-%d')
 
-    # Get tickers from database if not provided
+    # Get a deterministic universe from the database if not provided
     if tickers is None:
-        conn = get_connection()
-        df = pd.read_sql_query('SELECT DISTINCT ticker FROM stocks', conn)
-        conn.close()
-        tickers = df['ticker'].tolist()
+        tickers = get_backtest_universe()
 
     if not tickers:
         return {'success': False, 'error': 'No tickers available for backtest'}

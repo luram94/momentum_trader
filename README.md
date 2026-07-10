@@ -125,7 +125,7 @@ indicators:
 
 # Backtesting
 backtest:
-  default_period_days: 365
+  default_period_days: 90
   rebalance_frequency: weekly
   slippage_percent: 0.1
   commission_per_trade: 0
