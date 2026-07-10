@@ -17,8 +17,8 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
-from logger import get_logger
-from config_loader import get_config
+from hqm.logger import get_logger
+from hqm.config_loader import get_config
 
 logger = get_logger('risk_metrics')
 config = get_config()

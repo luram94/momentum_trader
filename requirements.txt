@@ -1,4 +1,4 @@
-# Core dependencies
+# Runtime dependencies (dev/test tools live in requirements-dev.txt)
 # (touching this file forces Streamlit Cloud to reprocess dependencies and
 # restart the app process, which a plain code push does not do when the
 # previous process has crashed)
@@ -16,7 +16,3 @@ plotly>=5.18.0
 
 # Configuration
 pyyaml>=6.0
-
-# Testing
-pytest>=7.0.0
-pytest-cov>=4.0.0

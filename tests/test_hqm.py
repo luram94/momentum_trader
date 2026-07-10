@@ -11,11 +11,7 @@ Tests for core functionality including:
 import pytest
 import numpy as np
 import pandas as pd
-from pathlib import Path
-import sys
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 class TestConfigLoader:
@@ -23,7 +19,7 @@ class TestConfigLoader:
 
     def test_default_config_loads(self):
         """Test that default config loads without errors."""
-        from config_loader import Config
+        from hqm.config_loader import Config
 
         config = Config()
         assert config.portfolio.default_size == 10000
@@ -32,7 +28,7 @@ class TestConfigLoader:
 
     def test_portfolio_config_values(self):
         """Test portfolio configuration defaults."""
-        from config_loader import PortfolioConfig
+        from hqm.config_loader import PortfolioConfig
 
         config = PortfolioConfig()
         assert config.min_size == 1000
@@ -40,7 +36,7 @@ class TestConfigLoader:
 
     def test_scanner_filter_defaults(self):
         """Test scanner filter default configuration."""
-        from config_loader import ScannerFiltersConfig
+        from hqm.config_loader import ScannerFiltersConfig
 
         filters = ScannerFiltersConfig()
         assert filters.max_rsi == 70
@@ -54,7 +50,7 @@ class TestRiskMetrics:
 
     def test_sharpe_ratio_calculation(self):
         """Test Sharpe ratio calculation."""
-        from risk_metrics import calculate_sharpe_ratio
+        from hqm.risk_metrics import calculate_sharpe_ratio
 
         # Create sample returns
         np.random.seed(42)
@@ -67,7 +63,7 @@ class TestRiskMetrics:
 
     def test_sharpe_ratio_zero_std(self):
         """Test Sharpe ratio with zero standard deviation."""
-        from risk_metrics import calculate_sharpe_ratio
+        from hqm.risk_metrics import calculate_sharpe_ratio
 
         returns = pd.Series([0.01] * 100)  # Constant returns
         sharpe = calculate_sharpe_ratio(returns)
@@ -75,7 +71,7 @@ class TestRiskMetrics:
 
     def test_sharpe_ratio_empty_returns(self):
         """Test Sharpe ratio with empty returns."""
-        from risk_metrics import calculate_sharpe_ratio
+        from hqm.risk_metrics import calculate_sharpe_ratio
 
         returns = pd.Series([])
         sharpe = calculate_sharpe_ratio(returns)
@@ -83,7 +79,7 @@ class TestRiskMetrics:
 
     def test_max_drawdown_calculation(self):
         """Test maximum drawdown calculation."""
-        from risk_metrics import calculate_max_drawdown
+        from hqm.risk_metrics import calculate_max_drawdown
 
         # Create price series with known drawdown
         prices = pd.Series([100, 110, 105, 90, 95, 100, 105])
@@ -95,7 +91,7 @@ class TestRiskMetrics:
 
     def test_volatility_calculation(self):
         """Test volatility calculation."""
-        from risk_metrics import calculate_volatility
+        from hqm.risk_metrics import calculate_volatility
 
         np.random.seed(42)
         returns = pd.Series(np.random.normal(0.001, 0.02, 252))
@@ -108,7 +104,7 @@ class TestRiskMetrics:
 
     def test_value_at_risk(self):
         """Test Value at Risk calculation."""
-        from risk_metrics import calculate_value_at_risk
+        from hqm.risk_metrics import calculate_value_at_risk
 
         np.random.seed(42)
         returns = pd.Series(np.random.normal(0, 0.02, 252))
@@ -121,7 +117,7 @@ class TestRiskMetrics:
 
     def test_sortino_ratio(self):
         """Test Sortino ratio calculation."""
-        from risk_metrics import calculate_sortino_ratio
+        from hqm.risk_metrics import calculate_sortino_ratio
 
         np.random.seed(42)
         returns = pd.Series(np.random.normal(0.001, 0.02, 252))
@@ -135,7 +131,7 @@ class TestBacktesting:
 
     def test_backtest_engine_initialization(self):
         """Test BacktestEngine initialization."""
-        from backtest import BacktestEngine
+        from hqm.backtest import BacktestEngine
 
         engine = BacktestEngine(
             initial_capital=10000,
@@ -152,7 +148,7 @@ class TestBacktesting:
 
     def test_rebalance_dates_weekly(self):
         """Test weekly rebalance date generation."""
-        from backtest import BacktestEngine
+        from hqm.backtest import BacktestEngine
         from datetime import datetime
 
         engine = BacktestEngine(rebalance_frequency='weekly')
@@ -173,7 +169,7 @@ class TestBacktesting:
 
     def test_rebalance_dates_monthly(self):
         """Test monthly rebalance date generation."""
-        from backtest import BacktestEngine
+        from hqm.backtest import BacktestEngine
         from datetime import datetime
 
         engine = BacktestEngine(rebalance_frequency='monthly')
@@ -216,7 +212,7 @@ class TestLogger:
 
     def test_logger_creation(self):
         """Test logger creation."""
-        from logger import setup_logging
+        from hqm.logger import setup_logging
 
         logger = setup_logging(name='test_logger', console_output=False)
         assert logger is not None
@@ -224,7 +220,7 @@ class TestLogger:
 
     def test_logger_caching(self):
         """Test logger caching behavior."""
-        from logger import setup_logging
+        from hqm.logger import setup_logging
 
         logger1 = setup_logging(name='cache_test', console_output=False)
         logger2 = setup_logging(name='cache_test', console_output=False)
@@ -237,7 +233,7 @@ class TestIntegration:
 
     def test_config_to_portfolio_settings(self):
         """Test config values flow to portfolio calculations."""
-        from config_loader import Config
+        from hqm.config_loader import Config
 
         config = Config()
         portfolio_size = config.portfolio.default_size
@@ -248,7 +244,7 @@ class TestIntegration:
 
     def test_risk_metrics_integration(self):
         """Test risk metrics work together."""
-        from risk_metrics import calculate_sharpe_ratio, calculate_volatility, calculate_sortino_ratio
+        from hqm.risk_metrics import calculate_sharpe_ratio, calculate_volatility, calculate_sortino_ratio
 
         np.random.seed(42)
         returns = pd.Series(np.random.normal(0.001, 0.02, 252))

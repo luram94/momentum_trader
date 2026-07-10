@@ -13,10 +13,10 @@ from typing import Any, Callable, Dict, List, Optional
 import pandas as pd
 import yfinance as yf
 
-from logger import get_logger
-from config_loader import get_config
-from database import get_connection
-from risk_metrics import calculate_sharpe_ratio, calculate_max_drawdown
+from hqm.logger import get_logger
+from hqm.config_loader import get_config
+from hqm.database import get_connection
+from hqm.risk_metrics import calculate_sharpe_ratio, calculate_max_drawdown
 
 logger = get_logger('backtest')
 config = get_config()

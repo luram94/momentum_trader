@@ -17,8 +17,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field, fields
 
+# Repository root (this file lives in hqm/, one level below the root)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
 # Default configuration path
-CONFIG_PATH = Path(__file__).parent / 'config.yaml'
+CONFIG_PATH = PROJECT_ROOT / 'config.yaml'
 
 
 @dataclass
@@ -78,7 +81,7 @@ class LoggingConfig:
     """Logging configuration."""
     level: str = 'INFO'
     format: str = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    file: str = 'hqm_scanner.log'
+    file: str = 'logs/hqm_scanner.log'
     max_size_mb: int = 10
     backup_count: int = 3
     console_output: bool = True
