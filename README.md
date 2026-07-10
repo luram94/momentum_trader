@@ -81,6 +81,16 @@ streamlit run streamlit_app.py
 
 Access at `http://localhost:8501`
 
+### Run with Docker
+
+```bash
+docker compose up --build
+```
+
+Access at `http://localhost:8501`. The SQLite database (`data/`) and logs
+(`logs/`) are bind-mounted from the host, so they persist across container
+rebuilds.
+
 ## Usage
 
 ### Web Application Workflow
