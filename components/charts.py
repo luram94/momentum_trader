@@ -4,12 +4,11 @@ Chart Components
 Plotly chart helpers for the HQM Scanner Streamlit app.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 from formatting import frac_to_pct, format_pct
 
@@ -183,7 +182,7 @@ def create_equity_curve(portfolio_history: List[Dict[str, Any]]) -> go.Figure:
         name='Portfolio Value',
         line=dict(color=COLORS['primary'], width=2),
         fill='tozeroy',
-        fillcolor=f"rgba(25, 135, 84, 0.2)",
+        fillcolor="rgba(25, 135, 84, 0.2)",
     ))
 
     fig.update_layout(
@@ -223,7 +222,7 @@ def create_drawdown_chart(portfolio_history: List[Dict[str, Any]]) -> go.Figure:
         name='Drawdown',
         line=dict(color=COLORS['danger'], width=2),
         fill='tozeroy',
-        fillcolor=f"rgba(220, 53, 69, 0.2)",
+        fillcolor="rgba(220, 53, 69, 0.2)",
     ))
 
     fig.update_layout(

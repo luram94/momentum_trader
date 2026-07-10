@@ -30,6 +30,15 @@ init_session_state()
 st.title("Portfolio Tracking")
 st.markdown("Track your positions and performance.")
 
+st.warning(
+    "**Shared demo storage** -- this app has no user accounts. Portfolio "
+    "entries live in a single shared database: on the public deployment "
+    "they are visible to every visitor and are erased whenever the app "
+    "restarts or redeploys. Run the app locally for private, persistent "
+    "tracking.",
+    icon="⚠️",
+)
+
 # Sidebar - Add position form
 with st.sidebar:
     st.header("Add Position")

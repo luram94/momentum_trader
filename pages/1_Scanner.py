@@ -14,7 +14,6 @@ from database import (
     fetch_and_store_data,
     run_hqm_scan_from_db,
     get_data_age_hours,
-    get_last_refresh,
     get_stock_count,
     get_sector_breakdown,
 )
@@ -175,9 +174,8 @@ with st.sidebar:
 
     st.number_input(
         "Portfolio Size ($)",
-        min_value=config.portfolio.min_size,
+        min_value=int(config.portfolio.min_size),
         max_value=1000000,
-        value=st.session_state.portfolio_size,
         step=1000,
         key="portfolio_size",
     )
@@ -186,7 +184,6 @@ with st.sidebar:
         "Number of Positions",
         min_value=1,
         max_value=config.portfolio.max_positions,
-        value=st.session_state.num_positions,
         step=1,
         key="num_positions",
     )
@@ -202,7 +199,6 @@ with st.sidebar:
             "Max SMA10 Distance (%)",
             min_value=0.0,
             max_value=30.0,
-            value=st.session_state.max_sma10_distance,
             step=1.0,
             key="max_sma10_distance",
         )
@@ -211,9 +207,9 @@ with st.sidebar:
     if st.session_state.rsi_filter_enabled:
         col1, col2 = st.columns(2)
         with col1:
-            st.number_input("Min RSI", 0, 100, st.session_state.rsi_min, key="rsi_min")
+            st.number_input("Min RSI", 0, 100, key="rsi_min")
         with col2:
-            st.number_input("Max RSI", 0, 100, st.session_state.rsi_max, key="rsi_max")
+            st.number_input("Max RSI", 0, 100, key="rsi_max")
 
     st.checkbox("Volume Filter", key="volume_filter_enabled")
     if st.session_state.volume_filter_enabled:
@@ -221,7 +217,6 @@ with st.sidebar:
             "Min Avg Volume",
             min_value=100000,
             max_value=10000000,
-            value=st.session_state.min_volume,
             step=100000,
             key="min_volume",
         )
@@ -232,7 +227,6 @@ with st.sidebar:
             "Max ATR (%)",
             min_value=1.0,
             max_value=20.0,
-            value=st.session_state.max_atr_percent,
             step=0.5,
             key="max_atr_percent",
         )
@@ -248,7 +242,6 @@ with st.sidebar:
             "Max per Sector",
             min_value=1,
             max_value=10,
-            value=st.session_state.max_per_sector,
             key="max_per_sector",
         )
 
@@ -258,7 +251,6 @@ with st.sidebar:
     st.multiselect(
         "Include Sectors (empty = all)",
         options=sector_names,
-        default=st.session_state.sector_filter,
         key="sector_filter",
     )
 

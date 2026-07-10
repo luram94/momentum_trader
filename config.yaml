@@ -1,13 +1,14 @@
 # HQM Momentum Scanner Configuration
 # =====================================
-# Externalized settings for easy customization
+# Every key in this file is read by the application. UI filter defaults come
+# from scanner_filters; the filters themselves are opt-in per scan.
 
 # Portfolio Settings
 portfolio:
   default_size: 10000          # Default portfolio size in USD
   default_positions: 8         # Default number of positions (7-10 recommended)
-  min_size: 1000              # Minimum portfolio size
-  max_positions: 50           # Maximum positions allowed
+  min_size: 1000              # Minimum portfolio size accepted by the UI
+  max_positions: 50           # Maximum positions accepted by the UI
 
 # Data Collection Settings
 data:
@@ -15,63 +16,34 @@ data:
     - NYSE
     - NASDAQ
   min_market_cap: '+Mid (over $2bln)'  # FinViz filter string
-  cache_expiry_hours: 24      # Consider data stale after this many hours
+  cache_expiry_hours: 24      # Data counts as fresh below this age (stale below 2x)
 
 # HQM Strategy Settings
 strategy:
-  min_percentile_threshold: 25  # Minimum percentile in ANY timeframe
-  timeframes:
-    - 1M
-    - 3M
-    - 6M
-    - 1Y
+  min_percentile_threshold: 25  # Minimum percentile in ANY timeframe (scanner AND backtest)
 
-# Technical Indicators
-indicators:
-  sma:
-    period: 10                # SMA period for entry timing
-    good_threshold: 5         # Green zone: <= 5% above SMA
-    moderate_threshold: 15    # Yellow zone: 5-15% above SMA
-    # Red zone: > 15% above SMA
-
-  rsi:
-    enabled: true
-    period: 14
-    overbought: 70            # Exclude stocks with RSI > this
-    oversold: 30              # Flag stocks with RSI < this
-
-  volume:
-    enabled: true
-    min_avg_volume: 500000    # Minimum average daily volume
-    volume_surge_threshold: 1.5  # Flag if current volume > 1.5x average
-
-  volatility:
-    enabled: true
-    atr_period: 14
-    max_atr_percent: 10       # Maximum ATR as % of price
-
-# Sector Settings
-sectors:
-  diversification:
-    enabled: true
-    max_per_sector: 3         # Maximum positions per sector
-  excluded_sectors: []        # Sectors to exclude (e.g., ['Utilities', 'Real Estate'])
+# Scanner Filter Defaults (initial UI values; each filter is opt-in)
+scanner_filters:
+  max_sma10_distance: 15      # Default 'Max SMA10 Distance' (%)
+  min_rsi: 0                  # Default 'Min RSI'
+  max_rsi: 70                 # Default 'Max RSI'
+  min_avg_volume: 500000      # Default 'Min Avg Volume'
+  max_atr_percent: 10         # Default 'Max ATR' (% of price)
+  max_per_sector: 3           # Default 'Max per Sector' (diversification)
 
 # Risk Metrics
 risk:
   benchmark: SPY              # Benchmark for beta calculation
   risk_free_rate: 0.05        # Annual risk-free rate (5%)
-  sharpe_period_days: 252     # Trading days for annualized Sharpe
+  sharpe_period_days: 252     # Trading periods per year for annualization
 
 # Backtesting Settings
 backtest:
   default_period_days: 90     # Default backtest period
   initial_capital: 10000
   rebalance_frequency: weekly # daily, weekly, monthly
-  include_dividends: false
   slippage_percent: 0.1       # 0.1% slippage per trade
   commission_per_trade: 0     # Commission per trade in USD
-
 
 # Logging Settings
 logging:
@@ -84,12 +56,8 @@ logging:
 
 # API Rate Limiting
 rate_limits:
-  finviz_delay_seconds: 1     # Delay between FinViz requests
   yfinance_batch_size: 50     # Batch size for yfinance downloads
-  max_retries: 3              # Max retries on API failure
-  retry_delay_seconds: 5      # Delay between retries
 
 # Database Settings
 database:
   path: 'data/hqm_data.db'
-  vacuum_on_startup: false    # Run VACUUM on startup

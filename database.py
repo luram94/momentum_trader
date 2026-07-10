@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import sqlite3
 import math
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -183,19 +183,6 @@ TABLE_SCHEMAS: Dict[str, str] = {
             notes TEXT,
             hqm_score_at_entry REAL,
             UNIQUE(ticker, entry_date)
-        )
-    ''',
-
-    # Portfolio history for tracking value over time
-    'portfolio_history': '''
-        CREATE TABLE IF NOT EXISTS portfolio_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date DATE UNIQUE,
-            total_value REAL,
-            cash REAL,
-            invested REAL,
-            daily_return REAL,
-            cumulative_return REAL
         )
     ''',
 
@@ -971,58 +958,6 @@ def run_hqm_scan_from_db(
     return {'success': True, 'results': results, 'summary': summary}
 
 
-def get_scan_history(limit: int = 10) -> List[Dict[str, Any]]:
-    """
-    Get recent scan history.
-
-    Args:
-        limit: Maximum number of scans to return
-
-    Returns:
-        List of scan records
-    """
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute('''
-        SELECT id, scan_date, portfolio_size, num_positions, total_invested,
-               cash_remaining, filters_applied
-        FROM scans
-        ORDER BY scan_date DESC
-        LIMIT ?
-    ''', (limit,))
-
-    scans = [dict(row) for row in cursor.fetchall()]
-    conn.close()
-
-    return scans
-
-
-def get_hqm_history(ticker: str, days: int = 30) -> List[Dict[str, Any]]:
-    """
-    Get HQM score history for a ticker.
-
-    Args:
-        ticker: Stock ticker symbol
-        days: Number of days of history
-
-    Returns:
-        List of history records
-    """
-    conn = get_connection()
-
-    df = pd.read_sql_query('''
-        SELECT date, hqm_score, pct_1m, pct_3m, pct_6m, pct_1y, price, rsi, sma10_distance
-        FROM hqm_history
-        WHERE ticker = ?
-        ORDER BY date DESC
-        LIMIT ?
-    ''', conn, params=(ticker, days))
-
-    conn.close()
-    return df.to_dict('records')
-
-
 # =============================================================================
 # WATCHLIST FUNCTIONS
 # =============================================================================
@@ -1030,9 +965,7 @@ def get_hqm_history(ticker: str, days: int = 30) -> List[Dict[str, Any]]:
 def add_to_watchlist(
     ticker: str,
     target_price: Optional[float] = None,
-    notes: Optional[str] = None,
-    alert_enabled: bool = False,
-    alert_threshold: Optional[float] = None
+    notes: Optional[str] = None
 ) -> bool:
     """
     Add a ticker to the watchlist.
@@ -1041,8 +974,6 @@ def add_to_watchlist(
         ticker: Stock ticker symbol
         target_price: Target entry price
         notes: User notes
-        alert_enabled: Whether to enable alerts
-        alert_threshold: Alert threshold (e.g., SMA distance)
 
     Returns:
         True if successful, False if already exists
@@ -1052,9 +983,9 @@ def add_to_watchlist(
 
     try:
         cursor.execute('''
-            INSERT INTO watchlist (ticker, target_entry_price, notes, alert_enabled, alert_threshold)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (ticker.upper(), target_price, notes, 1 if alert_enabled else 0, alert_threshold))
+            INSERT INTO watchlist (ticker, target_entry_price, notes)
+            VALUES (?, ?, ?)
+        ''', (ticker.upper(), target_price, notes))
         conn.commit()
         logger.info(f"Added {ticker} to watchlist")
         return True

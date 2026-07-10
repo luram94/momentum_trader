@@ -55,7 +55,8 @@ def main():
             st.metric("Stocks in Database", f"{stock_count:,}")
 
             if data_age < float('inf'):
-                age_color = "green" if data_age < 24 else "orange" if data_age < 48 else "red"
+                expiry = config.data.cache_expiry_hours
+                age_color = "green" if data_age < expiry else "orange" if data_age < 2 * expiry else "red"
                 st.markdown(f"Data Age: :{age_color}[{data_age:.1f} hours]")
 
             if last_refresh:
@@ -108,7 +109,8 @@ def main():
         )
 
     with col4:
-        status = "Fresh" if data_age < 24 else "Stale" if data_age < 48 else "Outdated"
+        expiry = config.data.cache_expiry_hours
+        status = "Fresh" if data_age < expiry else "Stale" if data_age < 2 * expiry else "Outdated"
         st.metric(
             "Data Status",
             status if stock_count > 0 else "No Data",
