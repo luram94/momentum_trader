@@ -1,0 +1,31 @@
+# VCS / tooling
+.git
+.gitignore
+.claude
+.devcontainer
+.pytest_cache
+.mypy_cache
+
+# Python artifacts
+__pycache__
+*.pyc
+*.pyo
+venv
+.venv
+*.egg-info
+
+# Runtime state (mounted as volumes instead)
+data
+logs
+*.log
+*.db
+*.db.bak*
+
+# Not needed in the image
+tests
+requirements-dev.txt
+pytest.ini
+README.md
+LICENSE
+Dockerfile
+docker-compose.yml
