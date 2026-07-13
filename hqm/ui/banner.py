@@ -45,19 +45,21 @@ def render_regime_banner() -> None:
     )
     exposure = _exposure_pct(snap['max_exposure'])
 
+    header = f"Market Regime: {regime.capitalize()} — primary proxy {snap['proxy']}"
+
     if regime == UPTREND:
         st.success(
-            f"🟢 **Market Regime: Uptrend** — long exposure allowed up to "
+            f"🟢 **{header}** — long exposure allowed up to "
             f"{exposure}.\n\n{detail} · as of {snap['as_of']}"
         )
     elif regime == CAUTION:
         st.warning(
-            f"🟡 **Market Regime: Caution** — reduce position size, max long "
+            f"🟡 **{header}** — reduce position size, max long "
             f"exposure {exposure}.\n\n{detail} · as of {snap['as_of']}"
         )
     else:
         st.error(
-            f"🔴 **Market Regime: Downtrend** — avoid new long entries, max "
+            f"🔴 **{header}** — avoid new long entries, max "
             f"long exposure {exposure}.\n\n{detail} · as of {snap['as_of']}"
         )
 
@@ -67,6 +69,7 @@ def render_regime_banner() -> None:
         sec_regime = secondary.get('regime', 'unknown')
         agreement = "confirms" if sec_regime == regime else "diverges from"
         st.caption(
-            f"Secondary check — {cfg.secondary_proxy}: **{sec_regime}** "
-            f"({agreement} {cfg.proxy})."
+            f"Secondary confirmation — {cfg.secondary_proxy}: **{sec_regime}** "
+            f"({agreement} the {cfg.proxy} regime; {cfg.proxy} is the "
+            f"decision driver)."
         )
