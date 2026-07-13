@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pandas as pd
 import yfinance as yf
@@ -17,6 +17,12 @@ from hqm.logger import get_logger
 from hqm.config_loader import get_config
 from hqm.database import get_connection
 from hqm.risk_metrics import calculate_sharpe_ratio, calculate_max_drawdown
+from hqm.market_regime import (
+    UPTREND, CAUTION, DOWNTREND, UNKNOWN,
+    fetch_regime_history,
+    apply_regime_to_targets,
+    regime_exposures_from_config,
+)
 
 logger = get_logger('backtest')
 config = get_config()
@@ -43,7 +49,10 @@ class BacktestEngine:
         partial_exit_days: int = 4,
         trailing_ma_period: int = 10,
         min_percentile: Optional[float] = None,
-        max_tickers: int = 200
+        max_tickers: int = 200,
+        use_market_regime: bool = False,
+        regime_exposures: Optional[Dict[str, float]] = None,
+        regime_proxy: Optional[str] = None
     ):
         """
         Initialize backtest engine.
@@ -64,6 +73,13 @@ class BacktestEngine:
             max_tickers: Cap on universe size (yfinance struggles with too
                 many). The universe must be ordered deterministically before
                 the cap is applied -- see get_backtest_universe().
+            use_market_regime: Scale target exposure by the market regime
+                (QQQ trend classification) at each rebalance; in downtrend
+                no new long entries are opened and excess stays in cash.
+            regime_exposures: Max exposure per regime, e.g.
+                {'uptrend': 1.0, 'caution': 0.5, 'downtrend': 0.0}.
+                Defaults to the config.yaml market_regime values.
+            regime_proxy: Market proxy ticker (default from config, QQQ).
         """
         self.initial_capital = initial_capital
         self.num_positions = num_positions
@@ -82,20 +98,37 @@ class BacktestEngine:
         self.partial_exit_days = partial_exit_days
         self.trailing_ma_period = trailing_ma_period
 
+        # Market regime settings
+        self.use_market_regime = use_market_regime
+        self.regime_exposures = regime_exposures or regime_exposures_from_config()
+        self.regime_proxy = regime_proxy or config.market_regime.proxy
+        self.regime_data_unavailable = False
+        self._regime_series: Optional[pd.Series] = None
+        self.baseline_stats: Optional[Dict[str, float]] = None
+
+        # Universe stats (filled by run) for disclosure in results
+        self.universe_requested = 0
+        self.universe_used = 0
+        self.universe_with_history = 0
+
+        self._reset_state()
+
+    def _reset_state(self) -> None:
+        """Reset per-simulation state (positions, history, counters)."""
         self.trades: List[Dict[str, Any]] = []
         self.portfolio_history: List[Dict[str, Any]] = []
         self.positions: Dict[str, Dict[str, Any]] = {}
-        self.cash = initial_capital
+        self.cash = self.initial_capital
 
         # Stop-loss tracking metrics
         self.stop_loss_exits = 0
         self.trailing_stop_exits = 0
         self.partial_exits = 0
 
-        # Universe stats (filled by run) for disclosure in results
-        self.universe_requested = 0
-        self.universe_used = 0
-        self.universe_with_history = 0
+        # Days spent in each market regime (main pass only)
+        self.regime_day_counts: Dict[str, int] = {
+            UPTREND: 0, CAUTION: 0, DOWNTREND: 0, UNKNOWN: 0
+        }
 
     def _get_rebalance_dates(
         self,
@@ -620,7 +653,8 @@ class BacktestEngine:
         self,
         date: datetime,
         ohlc_data: Dict[str, pd.DataFrame],
-        date_idx: int
+        date_idx: int,
+        regime: Optional[str] = None
     ) -> float:
         """
         Record portfolio value for a given date.
@@ -629,6 +663,8 @@ class BacktestEngine:
             date: Current date
             ohlc_data: Dict with 'Close', 'High', 'Low' DataFrames
             date_idx: Current date index
+            regime: Market regime label for the date (when the regime
+                filter is active)
 
         Returns:
             Total portfolio value
@@ -642,15 +678,135 @@ class BacktestEngine:
 
         total_value = self.cash + invested_value
 
-        self.portfolio_history.append({
+        record = {
             'date': date,
             'total_value': total_value,
             'cash': self.cash,
             'invested': invested_value,
             'positions': len(self.positions)
-        })
+        }
+        if regime is not None:
+            record['regime'] = regime
+        self.portfolio_history.append(record)
 
         return total_value
+
+    def _simulate(
+        self,
+        ohlc_data: Dict[str, pd.DataFrame],
+        trading_days: List[Any],
+        start_idx: int,
+        rebalance_dates: List[datetime],
+        apply_regime: bool,
+        update_progress: Callable[[int, str], None],
+        progress_range: Tuple[int, int],
+    ) -> Tuple[int, int]:
+        """
+        Run the daily simulation loop over already-fetched price data.
+
+        Called once normally, twice when the market regime filter is on
+        (a baseline pass without the filter, then the filtered pass), so it
+        must only touch state that _reset_state() clears.
+
+        Args:
+            ohlc_data: Dict with 'Close', 'High', 'Low' DataFrames
+            trading_days: Index of trading days in ohlc_data
+            start_idx: First simulated day (after the history buffer)
+            rebalance_dates: Scheduled rebalance dates
+            apply_regime: Scale rebalance targets by self._regime_series
+            update_progress: Progress callback
+            progress_range: (start_pct, end_pct) for progress reporting
+
+        Returns:
+            (rebalances_with_trades, rebalances_skipped)
+        """
+        total_days = len(trading_days) - start_idx
+        progress_start, progress_end = progress_range
+        rebalances_with_trades = 0
+        rebalances_skipped = 0
+
+        for date_idx in range(start_idx, len(trading_days)):
+            date = trading_days[date_idx]
+
+            # Convert to datetime if needed
+            if hasattr(date, 'to_pydatetime'):
+                date_dt = date.to_pydatetime()
+            else:
+                date_dt = date
+
+            regime_today = None
+            if apply_regime:
+                regime_today = self._regime_series.iloc[date_idx]
+                self.regime_day_counts[regime_today] = (
+                    self.regime_day_counts.get(regime_today, 0) + 1
+                )
+
+            # Daily stop management (if enabled)
+            if self.use_stop_loss and self.positions:
+                self._manage_positions_daily(date_dt, ohlc_data, date_idx)
+
+            # Check if this is a rebalance day
+            is_rebalance_day = False
+            for rb_date in rebalance_dates:
+                # Find the closest trading day on or before the rebalance date
+                if date_dt.date() == rb_date.date() or (
+                    date_idx > 0 and
+                    trading_days[date_idx - 1] < rb_date <= date_dt
+                ):
+                    is_rebalance_day = True
+                    break
+
+            if is_rebalance_day:
+                # Calculate HQM scores
+                hqm_df = self._calculate_hqm_scores(ohlc_data, date_idx)
+
+                if not hqm_df.empty:
+                    # Select top positions
+                    top_stocks = hqm_df.head(self.num_positions)
+                    equal_weight = 1.0 / len(top_stocks)
+                    target_positions = {row['Ticker']: equal_weight for _, row in top_stocks.iterrows()}
+
+                    if apply_regime:
+                        target_positions = apply_regime_to_targets(
+                            target_positions,
+                            regime_today,
+                            self.regime_exposures,
+                            set(self.positions.keys()),
+                        )
+
+                    # Execute rebalance (an empty target closes everything
+                    # and goes to cash -- e.g. downtrend at 0% exposure)
+                    self._execute_rebalance(date_dt, target_positions, ohlc_data, date_idx)
+                    rebalances_with_trades += 1
+                else:
+                    logger.debug(f"No stocks qualified for {date_dt}")
+                    rebalances_skipped += 1
+
+            # Record portfolio value daily
+            self._record_portfolio_value(date_dt, ohlc_data, date_idx, regime=regime_today)
+
+            # Update progress
+            days_done = date_idx - start_idx + 1
+            progress_pct = progress_start + int(
+                (progress_end - progress_start) * days_done / total_days
+            )
+            if days_done % 20 == 0:  # Update every 20 days
+                update_progress(progress_pct, f"Processing {date_dt.strftime('%Y-%m-%d')}...")
+
+        return rebalances_with_trades, rebalances_skipped
+
+    def _summarize_equity(self) -> Dict[str, float]:
+        """Total return and max drawdown of the current portfolio history."""
+        if not self.portfolio_history:
+            return {'total_return': 0.0, 'max_drawdown': 0.0}
+
+        hist = pd.DataFrame(self.portfolio_history)
+        values = pd.Series(
+            hist['total_value'].values, index=pd.to_datetime(hist['date'])
+        )
+        total_return = (values.iloc[-1] / self.initial_capital - 1) * 100
+        max_dd, _, _ = calculate_max_drawdown(values)
+        return {'total_return': round(total_return, 2), 'max_drawdown': max_dd}
 
     def run(
         self,
@@ -674,15 +830,12 @@ class BacktestEngine:
         logger.info(f"Starting backtest from {start_date} to {end_date}")
         logger.info(f"Universe: {len(tickers)} tickers, {self.num_positions} positions")
         logger.info(f"Stop-loss enabled: {self.use_stop_loss}")
+        logger.info(f"Market regime filter: {self.use_market_regime}")
 
-        # Reset state
-        self.trades = []
-        self.portfolio_history = []
-        self.positions = {}
-        self.cash = self.initial_capital
-        self.stop_loss_exits = 0
-        self.trailing_stop_exits = 0
-        self.partial_exits = 0
+        self._reset_state()
+        self._regime_series = None
+        self.regime_data_unavailable = False
+        self.baseline_stats = None
 
         def update_progress(pct: int, msg: str) -> None:
             if progress_callback:
@@ -730,8 +883,6 @@ class BacktestEngine:
         end_dt = datetime.strptime(end_date, '%Y-%m-%d')
         rebalance_dates = self._get_rebalance_dates(start_dt, end_dt)
 
-        update_progress(25, "Running simulation...")
-
         # Get all trading days in the backtest period
         trading_days = prices.index.tolist()
 
@@ -753,60 +904,47 @@ class BacktestEngine:
                 )
             }
 
-        total_days = len(trading_days) - start_idx
-        rebalances_with_trades = 0
-        rebalances_skipped = 0
-
-        # Daily iteration
-        for date_idx in range(start_idx, len(trading_days)):
-            date = trading_days[date_idx]
-
-            # Convert to datetime if needed
-            if hasattr(date, 'to_pydatetime'):
-                date_dt = date.to_pydatetime()
+        # Classify the market regime for every trading day (when enabled).
+        # The buffer window also covers the proxy's SMA200 warm-up.
+        if self.use_market_regime:
+            update_progress(22, f"Classifying market regime ({self.regime_proxy})...")
+            regime_series = fetch_regime_history(
+                self.regime_proxy, buffer_start, end_date
+            )
+            if regime_series is None:
+                # Degrade to an unfiltered backtest rather than failing; the
+                # results disclose that the filter could not be applied.
+                self.regime_data_unavailable = True
+                logger.warning(
+                    f"Could not fetch {self.regime_proxy} data; running "
+                    "without the market regime filter"
+                )
             else:
-                date_dt = date
+                self._regime_series = (
+                    regime_series.reindex(prices.index).ffill().fillna(UNKNOWN)
+                )
 
-            # Daily stop management (if enabled)
-            if self.use_stop_loss and self.positions:
-                self._manage_positions_daily(date_dt, ohlc_data, date_idx)
+        apply_regime = self._regime_series is not None
 
-            # Check if this is a rebalance day
-            is_rebalance_day = False
-            for rb_date in rebalance_dates:
-                # Find the closest trading day on or before the rebalance date
-                if date_dt.date() == rb_date.date() or (
-                    date_idx > 0 and
-                    trading_days[date_idx - 1] < rb_date <= date_dt
-                ):
-                    is_rebalance_day = True
-                    break
+        # Baseline pass (no regime filter) on the same data, so the results
+        # can compare return/drawdown with and without the filter
+        if apply_regime:
+            update_progress(25, "Running baseline simulation (no regime filter)...")
+            self._simulate(
+                ohlc_data, trading_days, start_idx, rebalance_dates,
+                apply_regime=False, update_progress=update_progress,
+                progress_range=(25, 55),
+            )
+            self.baseline_stats = self._summarize_equity()
+            self._reset_state()
 
-            if is_rebalance_day:
-                # Calculate HQM scores
-                hqm_df = self._calculate_hqm_scores(ohlc_data, date_idx)
-
-                if not hqm_df.empty:
-                    # Select top positions
-                    top_stocks = hqm_df.head(self.num_positions)
-                    equal_weight = 1.0 / len(top_stocks)
-                    target_positions = {row['Ticker']: equal_weight for _, row in top_stocks.iterrows()}
-
-                    # Execute rebalance
-                    self._execute_rebalance(date_dt, target_positions, ohlc_data, date_idx)
-                    rebalances_with_trades += 1
-                else:
-                    logger.debug(f"No stocks qualified for {date_dt}")
-                    rebalances_skipped += 1
-
-            # Record portfolio value daily
-            self._record_portfolio_value(date_dt, ohlc_data, date_idx)
-
-            # Update progress
-            days_done = date_idx - start_idx + 1
-            progress_pct = 25 + int(70 * days_done / total_days)
-            if days_done % 20 == 0:  # Update every 20 days
-                update_progress(progress_pct, f"Processing {date_dt.strftime('%Y-%m-%d')}...")
+        update_progress(55 if apply_regime else 25, "Running simulation...")
+        progress_range = (55, 90) if apply_regime else (25, 95)
+        rebalances_with_trades, rebalances_skipped = self._simulate(
+            ohlc_data, trading_days, start_idx, rebalance_dates,
+            apply_regime=apply_regime, update_progress=update_progress,
+            progress_range=progress_range,
+        )
 
         logger.info(f"Backtest complete: {rebalances_with_trades} rebalances executed, {rebalances_skipped} skipped")
 
@@ -874,10 +1012,30 @@ class BacktestEngine:
             if sell_trades_with_days else 0
         )
 
+        # Average long exposure (invested fraction of total value)
+        exposure = (
+            history_df['invested'] / history_df['total_value'].replace(0, pd.NA)
+        ).dropna()
+        avg_exposure_pct = (
+            round(float(exposure.mean()) * 100, 1) if len(exposure) else 0.0
+        )
+
         # Save to database
         self._save_results_to_db(total_return, sharpe, max_dd, num_trades, win_rate)
 
+        regime_results: Dict[str, Any] = {}
+        if self.use_market_regime:
+            regime_results = {
+                'regime_days': dict(self.regime_day_counts),
+                'avg_exposure_pct': avg_exposure_pct,
+                'regime_data_unavailable': self.regime_data_unavailable,
+            }
+            if self.baseline_stats:
+                regime_results['baseline_total_return'] = self.baseline_stats['total_return']
+                regime_results['baseline_max_drawdown'] = self.baseline_stats['max_drawdown']
+
         return {
+            **regime_results,
             'success': True,
             'initial_capital': self.initial_capital,
             'final_value': round(final_value, 2),
@@ -914,7 +1072,10 @@ class BacktestEngine:
                 'partial_exit_pct': self.partial_exit_pct,
                 'partial_exit_days': self.partial_exit_days,
                 'trailing_ma_period': self.trailing_ma_period,
-                'min_percentile': self.min_percentile
+                'min_percentile': self.min_percentile,
+                'use_market_regime': self.use_market_regime,
+                'regime_proxy': self.regime_proxy,
+                'regime_exposures': dict(self.regime_exposures)
             }
         }
 
@@ -994,7 +1155,9 @@ def run_backtest(
     use_stop_loss: bool = True,
     partial_exit_pct: float = 0.5,
     partial_exit_days: int = 4,
-    trailing_ma_period: int = 10
+    trailing_ma_period: int = 10,
+    use_market_regime: bool = False,
+    regime_exposures: Optional[Dict[str, float]] = None
 ) -> Dict[str, Any]:
     """
     Convenience function to run a backtest.
@@ -1011,6 +1174,9 @@ def run_backtest(
         partial_exit_pct: Percentage of position to sell at partial exit (0.33-0.5)
         partial_exit_days: Days before partial exit (3-5)
         trailing_ma_period: Moving average period for trailing stop (10 or 20)
+        use_market_regime: Scale exposure by the QQQ market regime at each
+            rebalance (no new longs in downtrend; excess stays in cash)
+        regime_exposures: Max exposure per regime (defaults from config.yaml)
 
     Returns:
         Backtest results
@@ -1047,7 +1213,9 @@ def run_backtest(
         use_stop_loss=use_stop_loss,
         partial_exit_pct=partial_exit_pct,
         partial_exit_days=partial_exit_days,
-        trailing_ma_period=trailing_ma_period
+        trailing_ma_period=trailing_ma_period,
+        use_market_regime=use_market_regime,
+        regime_exposures=regime_exposures
     )
 
     return engine.run(tickers, start_date, end_date, progress_callback)

@@ -48,6 +48,18 @@ class StrategyConfig:
 
 
 @dataclass
+class MarketRegimeConfig:
+    """Rule-based market regime settings (see hqm/market_regime.py)."""
+    enabled: bool = True
+    proxy: str = 'QQQ'
+    secondary_proxy: str = 'SPY'
+    slope_lookback_days: int = 5
+    uptrend_max_exposure: float = 1.0
+    caution_max_exposure: float = 0.5
+    downtrend_max_exposure: float = 0.0
+
+
+@dataclass
 class ScannerFiltersConfig:
     """Default UI values for the scanner's opt-in technical filters."""
     max_sma10_distance: float = 15
@@ -106,6 +118,7 @@ class Config:
     portfolio: PortfolioConfig = field(default_factory=PortfolioConfig)
     data: DataConfig = field(default_factory=DataConfig)
     strategy: StrategyConfig = field(default_factory=StrategyConfig)
+    market_regime: MarketRegimeConfig = field(default_factory=MarketRegimeConfig)
     scanner_filters: ScannerFiltersConfig = field(default_factory=ScannerFiltersConfig)
     risk: RiskConfig = field(default_factory=RiskConfig)
     backtest: BacktestConfig = field(default_factory=BacktestConfig)
@@ -119,6 +132,7 @@ _SECTIONS: Dict[str, type] = {
     'portfolio': PortfolioConfig,
     'data': DataConfig,
     'strategy': StrategyConfig,
+    'market_regime': MarketRegimeConfig,
     'scanner_filters': ScannerFiltersConfig,
     'risk': RiskConfig,
     'backtest': BacktestConfig,

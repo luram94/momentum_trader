@@ -22,6 +22,16 @@ data:
 strategy:
   min_percentile_threshold: 25  # Minimum percentile in ANY timeframe (scanner AND backtest)
 
+# Market Regime (Qullamaggie-inspired, rule-based -- see hqm/market_regime.py)
+market_regime:
+  enabled: true               # Show the regime banner on Home and Scanner
+  proxy: QQQ                  # Primary market proxy
+  secondary_proxy: SPY        # Secondary proxy shown for confirmation
+  slope_lookback_days: 5      # SMA10 rising = SMA10 today > SMA10 this many trading days ago
+  uptrend_max_exposure: 1.0   # Max long exposure per regime (fraction of capital)
+  caution_max_exposure: 0.5
+  downtrend_max_exposure: 0.0
+
 # Scanner Filter Defaults (initial UI values; each filter is opt-in)
 scanner_filters:
   max_sma10_distance: 15      # Default 'Max SMA10 Distance' (%)

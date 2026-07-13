@@ -42,7 +42,9 @@ def execute_backtest(
     use_stop_loss: bool = True,
     partial_exit_pct: float = 0.5,
     partial_exit_days: int = 4,
-    trailing_ma_period: int = 10
+    trailing_ma_period: int = 10,
+    use_market_regime: bool = False,
+    regime_exposures: dict | None = None
 ):
     """Execute backtest with progress display."""
     progress_bar = st.progress(0)
@@ -64,6 +66,8 @@ def execute_backtest(
             partial_exit_pct=partial_exit_pct,
             partial_exit_days=partial_exit_days,
             trailing_ma_period=trailing_ma_period,
+            use_market_regime=use_market_regime,
+            regime_exposures=regime_exposures,
         )
 
         progress_bar.empty()
@@ -163,6 +167,44 @@ with st.sidebar:
 
         st.divider()
 
+        # Market Regime Filter (QQQ trend classification)
+        st.subheader("Market Regime")
+
+        use_market_regime = st.checkbox(
+            "Enable market regime filter",
+            value=False,
+            help=(
+                f"Classify the market ({config.market_regime.proxy} vs its "
+                "SMA10/20/50/200) as Uptrend/Caution/Downtrend at each "
+                "rebalance and cap long exposure accordingly. In Downtrend "
+                "no new long entries are opened; excess allocation stays in cash."
+            )
+        )
+
+        uptrend_exposure = st.slider(
+            "Uptrend max exposure %",
+            min_value=0, max_value=100,
+            value=int(config.market_regime.uptrend_max_exposure * 100),
+            step=5,
+            help="Max long exposure while the market is in an uptrend"
+        )
+        caution_exposure = st.slider(
+            "Caution max exposure %",
+            min_value=0, max_value=100,
+            value=int(config.market_regime.caution_max_exposure * 100),
+            step=5,
+            help="Max long exposure while the market is in a caution regime"
+        )
+        downtrend_exposure = st.slider(
+            "Downtrend max exposure %",
+            min_value=0, max_value=100,
+            value=int(config.market_regime.downtrend_max_exposure * 100),
+            step=5,
+            help="Max long exposure while the market is in a downtrend (existing positions only; no new entries)"
+        )
+
+        st.divider()
+
         submitted = st.form_submit_button("Run Backtest", type="primary", use_container_width=True)
 
         if submitted:
@@ -181,6 +223,12 @@ with st.sidebar:
                     partial_exit_pct=partial_exit_pct,
                     partial_exit_days=partial_exit_days,
                     trailing_ma_period=trailing_ma,
+                    use_market_regime=use_market_regime,
+                    regime_exposures={
+                        'uptrend': uptrend_exposure / 100,
+                        'caution': caution_exposure / 100,
+                        'downtrend': downtrend_exposure / 100,
+                    },
                 )
 
                 if results['success']:
@@ -294,6 +342,63 @@ if st.session_state.backtest_results:
                 help="Average number of days positions were held"
             )
 
+    # Market regime metrics (if enabled)
+    if results.get('parameters', {}).get('use_market_regime', False):
+        st.divider()
+        st.subheader("Market Regime Filter")
+
+        if results.get('regime_data_unavailable'):
+            st.warning(
+                "Market proxy data could not be fetched, so the regime "
+                "filter was NOT applied to this run."
+            )
+        else:
+            regime_days = results.get('regime_days', {})
+
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric(
+                    "Uptrend Days", regime_days.get('uptrend', 0),
+                    help="Trading days classified as Uptrend"
+                )
+            with col2:
+                st.metric(
+                    "Caution Days", regime_days.get('caution', 0),
+                    help="Trading days classified as Caution"
+                )
+            with col3:
+                st.metric(
+                    "Downtrend Days", regime_days.get('downtrend', 0),
+                    help="Trading days classified as Downtrend"
+                )
+            with col4:
+                st.metric(
+                    "Avg Exposure",
+                    f"{results.get('avg_exposure_pct', 0):.1f}%",
+                    help="Average invested fraction of the portfolio"
+                )
+
+            # With/without comparison (baseline pass on the same data)
+            if 'baseline_total_return' in results:
+                st.markdown("**With vs. without the regime filter** "
+                            "(same data, same rebalance dates):")
+
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric(
+                        "Total Return (with filter)",
+                        f"{results['total_return']:.2f}%",
+                        delta=f"{results['total_return'] - results['baseline_total_return']:.2f} pp vs unfiltered",
+                    )
+                    st.caption(f"Without filter: {results['baseline_total_return']:.2f}%")
+                with col2:
+                    st.metric(
+                        "Max Drawdown (with filter)",
+                        f"{results['max_drawdown']:.2f}%",
+                        delta=f"{results['max_drawdown'] - results['baseline_max_drawdown']:.2f} pp vs unfiltered",
+                    )
+                    st.caption(f"Without filter: {results['baseline_max_drawdown']:.2f}%")
+
     st.divider()
 
     # Charts
@@ -377,6 +482,18 @@ if st.session_state.backtest_results:
                     st.write(f"**Partial Exit Days:** {params.get('partial_exit_days', 4)}")
                     st.write(f"**Trailing MA:** {params.get('trailing_ma_period', 10)}-day")
 
+                use_regime = params.get('use_market_regime', False)
+                st.write(f"**Market Regime Filter:** {'Enabled' if use_regime else 'Disabled'}")
+                if use_regime:
+                    exposures = params.get('regime_exposures', {})
+                    st.write(f"**Regime Proxy:** {params.get('regime_proxy', 'QQQ')}")
+                    st.write(
+                        "**Max Exposure:** "
+                        f"Up {int(exposures.get('uptrend', 1.0) * 100)}% / "
+                        f"Caution {int(exposures.get('caution', 0.5) * 100)}% / "
+                        f"Down {int(exposures.get('downtrend', 0.0) * 100)}%"
+                    )
+
 else:
     # No results yet
     st.info("Configure backtest settings in the sidebar and click 'Run Backtest' to test the strategy.")
@@ -437,6 +554,22 @@ with st.expander("About HQM Backtesting", expanded=False):
     2. **Partial Exit**: After 3-5 days (configurable), sell 33-50% of position if profitable
     3. **Break-even Stop**: After partial exit, stop moves to entry price
     4. **Trailing Stop**: Remaining position trails the 10-day MA, exits on first close below
+
+    ### Market Regime Filter (optional)
+
+    When enabled, the broad market ({config.market_regime.proxy}) is classified
+    each trading day with simple moving-average rules -- rule-based and
+    transparent, no ML:
+
+    - **Uptrend**: close > SMA50 and SMA200, SMA10 rising -- full exposure
+    - **Caution**: close > SMA200 but SMA10 falling or close below
+      SMA20/SMA50 -- exposure capped (default 50%)
+    - **Downtrend**: close < SMA200, or close < SMA50 with SMA10 falling --
+      no new long entries, exposure capped (default 0%), excess stays in cash
+
+    Target weights are scaled by the regime's max exposure at each rebalance.
+    The results include a baseline pass on the same data without the filter,
+    so you can compare return and drawdown directly.
 
     ### Key Assumptions
 
