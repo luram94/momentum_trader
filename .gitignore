@@ -46,8 +46,9 @@ env/
 *.swo
 *~
 
-# Claude Code
-.claude/
+# Claude Code (skills are versioned; everything else - settings, plans - is not)
+.claude/*
+!.claude/skills/
 
 # Logs
 *.log
