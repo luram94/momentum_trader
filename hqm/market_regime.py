@@ -81,8 +81,10 @@ def classify_regime(
         return CAUTION
     if close > sma50 and close > sma200 and sma10_rising:
         return UPTREND
-    # Only reachable on exact-equality edge cases (e.g. close == sma200)
-    return UNKNOWN
+    # Only reachable on exact-equality edges (e.g. close == sma200): the
+    # market is sitting on a make-or-break level, so err conservative.
+    # UNKNOWN stays reserved for "not enough history".
+    return CAUTION
 
 
 def classify_regime_series(

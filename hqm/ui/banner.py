@@ -31,6 +31,9 @@ def render_regime_banner() -> None:
     regime = snap.get('regime')
 
     if regime not in (UPTREND, CAUTION, DOWNTREND):
+        # Don't let a transient fetch failure occupy the cache for the full
+        # TTL -- clear so the next rerun retries immediately.
+        _cached_regime.clear()
         st.info(
             f"**Market regime unavailable** — could not evaluate {cfg.proxy} "
             f"({snap.get('error', 'unknown error')}). Trade as if in Caution."

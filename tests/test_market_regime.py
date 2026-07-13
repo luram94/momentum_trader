@@ -75,6 +75,14 @@ class TestClassifyRegime:
             sma10_prev=98,
         ) == DOWNTREND
 
+    def test_exact_boundary_classifies_caution(self):
+        # close sitting exactly on the SMA200 is a make-or-break level:
+        # conservative CAUTION, never full risk-on via the UNKNOWN default
+        assert classify_regime(
+            close=100, sma10=99, sma20=98, sma50=97, sma200=100,
+            sma10_prev=98,
+        ) == CAUTION
+
     def test_unknown_on_missing_values(self):
         assert classify_regime(
             close=100, sma10=99, sma20=98, sma50=97, sma200=np.nan,
