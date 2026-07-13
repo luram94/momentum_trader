@@ -20,6 +20,7 @@ from hqm.database import (
 from hqm.risk_metrics import calculate_all_risk_metrics
 from hqm.formatting import frac_cols_to_pct
 from hqm.ui.state import init_session_state
+from hqm.ui.banner import render_regime_banner
 from hqm.ui.charts import (
     create_allocation_chart,
     create_hqm_score_chart,
@@ -38,6 +39,8 @@ st.set_page_config(
 init_session_state()
 
 st.title("HQM Momentum Scanner")
+
+render_regime_banner()
 
 
 def refresh_data():

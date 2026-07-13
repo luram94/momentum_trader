@@ -16,6 +16,7 @@ from hqm.database import (
     get_stock_count,
 )
 from hqm.ui.state import init_session_state
+from hqm.ui.banner import render_regime_banner
 
 # Initialize logger and config
 logger = get_logger('streamlit_app')
@@ -83,6 +84,8 @@ def main():
     # Main content
     st.title("HQM Momentum Scanner")
     st.markdown("### High Quality Momentum Strategy Scanner")
+
+    render_regime_banner()
 
     # Overview metrics
     col1, col2, col3, col4 = st.columns(4)

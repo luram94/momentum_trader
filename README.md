@@ -20,6 +20,11 @@ By requiring consistency across all timeframes, the strategy filters out stocks 
 - **Quality Filter**: Requires minimum 25th percentile in ALL timeframes
 - **HQM Score**: Composite ranking based on percentile averages
 
+### Market Regime (Qullamaggie-inspired)
+- **Rule-based Trend Classification**: QQQ vs SMA10/20/50/200 → Uptrend / Caution / Downtrend (SPY as secondary check)
+- **Exposure Guidance Banner**: On Home and Scanner — full size in uptrend, reduced in caution, no new longs in downtrend
+- **Backtest Filter**: Optional exposure scaling per regime at each rebalance, with a with/without comparison on the same data
+
 ### Technical Indicators
 - **RSI (Relative Strength Index)**: 14-period momentum oscillator
 - **SMA10 Distance**: Entry timing based on 10-day moving average
