@@ -62,7 +62,7 @@ class _FakeScreener:
 def _custom_frame(**overrides):
     """Shaped like the FinViz Custom view with the columns the app requests."""
     frame = pd.DataFrame({
-        'Ticker': ['AAA', 'BBB'],
+        'Ticker': ['MSFT', 'BIIB'],
         'Sector': ['Technology', 'Healthcare'],
         'Industry': ['Software', 'Biotech'],
         'Market Cap': [5e9, 8e9],
@@ -93,8 +93,8 @@ class TestRefreshPipeline:
         rows = dict(conn.execute('SELECT ticker, avg_volume FROM stocks').fetchall())
         conn.close()
         # Real average volume, not the daily volume
-        assert rows['AAA'] == 2_500_000.0
-        assert rows['BBB'] == 1_100_000.0
+        assert rows['MSFT'] == 2_500_000.0
+        assert rows['BIIB'] == 1_100_000.0
         assert database.get_stock_count() == 2
         assert database.get_data_age_hours() < 0.1
 
