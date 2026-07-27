@@ -167,6 +167,7 @@ momentum_trader/
 │   ├── config_loader.py   # Type-safe configuration loader
 │   ├── logger.py          # Centralized logging
 │   ├── formatting.py      # Number/percentage formatting helpers
+│   ├── finviz_patch.py    # Fixes FinViz logo placeholder leaking into tickers
 │   └── ui/
 │       ├── charts.py      # Plotly chart helpers
 │       └── state.py       # Session state management

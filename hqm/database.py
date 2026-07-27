@@ -25,6 +25,10 @@ from finvizfinance.screener.custom import Custom
 
 from hqm.logger import get_logger
 from hqm.config_loader import get_config, PROJECT_ROOT
+from hqm.finviz_patch import apply_ticker_parsing_fix
+
+# FinViz's logo placeholder otherwise doubles the first letter of every symbol
+apply_ticker_parsing_fix()
 
 # Initialize logger
 logger = get_logger('database')
@@ -350,6 +354,100 @@ def get_data_age_hours() -> float:
     return (datetime.now() - last_refresh).total_seconds() / 3600
 
 
+# Tables holding tickers copied out of the stocks universe, with the columns
+# that make a row unique (empty when the table has no uniqueness constraint).
+_TICKER_REFERENCE_TABLES: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
+    ('watchlist', ()),
+    ('portfolio_positions', ('entry_date',)),
+    ('hqm_history', ('date',)),
+    ('scan_positions', ()),
+)
+
+# A real universe has a few percent of symbols that genuinely start with a
+# doubled letter (AA, AAPL, TTWO...). Anything past this means the scrape
+# itself is broken, not the market.
+_MAX_DOUBLED_FIRST_LETTER_SHARE = 0.5
+
+
+def _assert_tickers_look_sane(tickers: pd.Series) -> None:
+    """
+    Reject an obviously corrupted scrape before it replaces good data.
+
+    FinViz's logo placeholder once leaked into every symbol (ABNB -> AABNB)
+    and the refresh stored the lot without complaint. See hqm/finviz_patch.py.
+
+    Args:
+        tickers: Ticker column from the freshly scraped screener.
+
+    Raises:
+        RuntimeError: If the symbols look systematically malformed.
+    """
+    symbols = [str(t) for t in tickers if isinstance(t, str) and t]
+    if not symbols:
+        return
+
+    doubled = [s for s in symbols if len(s) > 1 and s[0] == s[1]]
+    share = len(doubled) / len(symbols)
+    if share > _MAX_DOUBLED_FIRST_LETTER_SHARE:
+        raise RuntimeError(
+            f'{share:.0%} of scraped tickers start with a doubled letter '
+            f'(e.g. {", ".join(doubled[:5])}); FinViz markup has probably '
+            f'changed again. Keeping existing database contents'
+        )
+
+
+def _repair_doubled_tickers(conn: sqlite3.Connection) -> int:
+    """
+    Rewrite tickers left doubled by an earlier broken refresh.
+
+    Only safe to call right after a clean stocks universe has been stored:
+    the universe is what tells a corrupted 'SSLS' from a legitimate 'AAPL'.
+    A symbol is repaired only when it is absent from the universe, starts
+    with a doubled letter, and its remainder is present.
+
+    Args:
+        conn: Open connection; the caller commits.
+
+    Returns:
+        Number of rows updated or dropped.
+    """
+    universe = {row[0] for row in conn.execute('SELECT ticker FROM stocks')}
+    if not universe:
+        return 0
+
+    repaired = 0
+    for table, key_columns in _TICKER_REFERENCE_TABLES:
+        rows = conn.execute(f'SELECT DISTINCT ticker FROM {table}').fetchall()
+        for (bad,) in rows:
+            if not bad or bad in universe:
+                continue
+            if len(bad) < 2 or bad[0] != bad[1] or bad[1:] not in universe:
+                continue
+            good = bad[1:]
+
+            # The clean symbol may already occupy this row's unique slot --
+            # drop the corrupted duplicate rather than fail the UPDATE.
+            if key_columns:
+                matches = ' AND '.join(
+                    f'other.{col} IS {table}.{col}' for col in key_columns
+                )
+                cursor = conn.execute(
+                    f'DELETE FROM {table} WHERE ticker = ? AND EXISTS ('
+                    f'  SELECT 1 FROM {table} AS other'
+                    f'  WHERE other.ticker = ? AND {matches})',
+                    (bad, good)
+                )
+                repaired += cursor.rowcount
+
+            cursor = conn.execute(
+                f'UPDATE {table} SET ticker = ? WHERE ticker = ?', (good, bad)
+            )
+            repaired += cursor.rowcount
+            logger.info(f'Repaired ticker {bad} -> {good} in {table}')
+
+    return repaired
+
+
 # FinViz Custom-view column ids (finvizfinance.constants.CUSTOM_SCREENER_COLUMNS):
 # 1=Ticker, 3=Sector, 4=Industry, 6=Market Cap, 43/44/45/46=Perf Month/
 # Quarter/Half Year/Year, 63=Average Volume, 65=Price, 67=Volume
@@ -374,6 +472,7 @@ def fetch_and_store_data(
         'nyse_count': 0,
         'nasdaq_count': 0,
         'total_stored': 0,
+        'tickers_repaired': 0,
         'duration_seconds': 0
     }
 
@@ -456,6 +555,9 @@ def fetch_and_store_data(
             'keeping existing database contents'
         )
 
+    # Fail before the DELETE below, while the old data is still intact
+    _assert_tickers_look_sane(df['Ticker'])
+
     # Store in database
     conn = get_connection()
     cursor = conn.cursor()
@@ -488,6 +590,10 @@ def fetch_and_store_data(
             row['Return_1Y'],
             datetime.now().isoformat()
         ))
+
+    # The fresh universe is the reference that makes this decidable, so heal
+    # any history written while the scrape was doubling first letters.
+    stats['tickers_repaired'] = _repair_doubled_tickers(conn)
 
     conn.commit()
     conn.close()
