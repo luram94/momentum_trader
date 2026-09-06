@@ -9,14 +9,14 @@ from hqm.ui.design import page_header, research_note, section_heading
 import pandas as pd
 
 from hqm.logger import get_logger
-from hqm.database import (
-    get_sector_breakdown,
-    get_sector_hqm_scores,
-    get_industry_breakdown,
-    get_industry_hqm_scores,
-    get_stock_count,
-    get_top_stocks_by_group,
-)
+import hqm.database as database
+
+get_sector_breakdown = database.get_sector_breakdown
+get_sector_hqm_scores = database.get_sector_hqm_scores
+get_industry_breakdown = database.get_industry_breakdown
+get_industry_hqm_scores = database.get_industry_hqm_scores
+get_stock_count = database.get_stock_count
+get_top_stocks_by_group = getattr(database, 'get_top_stocks_by_group', None)
 from hqm.formatting import frac_cols_to_pct
 from hqm.ui.state import init_session_state
 from hqm.ui.charts import (
@@ -46,6 +46,9 @@ def render_top_ranked(group: str, options: list[str], label: str) -> None:
         f"Choose a {label.lower()}", options, key=f"leaders_{group}",
         help="HQM scores are calculated against the full cached universe, then filtered to this group.",
     )
+    if get_top_stocks_by_group is None:
+        st.warning("The stock-leader index is still loading after the latest deployment. Refresh the page in a moment.")
+        return
     leaders = get_top_stocks_by_group(group, selected, limit=5)
     if not leaders:
         st.info(f"No ranked stocks are available for {selected} in this snapshot.")
