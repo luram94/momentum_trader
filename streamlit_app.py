@@ -28,17 +28,12 @@ def main():
     valid = frame.dropna(subset=['Avg_Return_3M']) if sectors else pd.DataFrame()
     apply_style()
     markup(f'<div class="mt-topline"><b>Workspace / Overview</b><span>{datetime.now():%A, %d %B %Y} · Server date</span></div>')
-    if not valid.empty:
-        leader = valid.loc[valid['Avg_Return_3M'].idxmax()]
-        feature = (f'<div class="mt-kicker">Sector leader · 3 month average</div><strong>{escape(leader["Sector"])}</strong>'
-                   f'<div class="mt-large">{leader["Avg_Return_3M"] * 100:+.1f}%</div>'
-                   f'<span>Across {int(leader["Count"]):,} stocks in the cached universe.<br>Equal-weight stock returns, not an ETF return.</span>')
-    else:
-        feature = '<div class="mt-kicker">The HQM approach</div><strong>Strength over time.</strong><span>One month. Three months. Six months. One year.<br>Four perspectives on consistent momentum.</span>'
-    markup('<div class="mt-hero"><div><div class="mt-kicker">The momentum briefing</div>'
-           '<h1>A clearer view.<br><em>A stronger shortlist.</em></h1>'
-           '<p>See where strength is building. Compare market leadership, find consistent momentum, and research your next move.</p></div>'
-           f'<div class="mt-hero-aside">{feature}</div></div>')
+    leader = valid.loc[valid['Avg_Return_3M'].idxmax()] if not valid.empty else None
+    leader_text = f'{leader["Sector"]} · {leader["Avg_Return_3M"] * 100:+.1f}% · 3M average' if leader is not None else 'Awaiting universe data'
+    markup(f'<div class="mt-brief-strip"><div><span class="mt-kicker">MARKET OVERVIEW</span>'
+           f'<strong>{datetime.now():%d %b %Y}</strong></div><div><span class="mt-kicker">SECTOR LEADER</span>'
+           f'<strong>{escape(leader_text)}</strong></div><div><span class="mt-kicker">UNIVERSE</span>'
+           f'<strong>{count:,} stocks · {status}</strong></div></div>')
     render_regime_banner()
     actions = st.columns([1, 1, 2])
     with actions[0]:
