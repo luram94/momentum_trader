@@ -272,20 +272,19 @@ with tab_industries:
 
     st.divider()
 
-    # Industry breakdown table with sector column and search
-    st.subheader("Industry Details")
-
-    # Sector filter for drilling down
+    # Hierarchical drilldown: sector -> industries -> ranked companies.
+    section_heading("Sector → industry drilldown", "01 / Narrow the research universe")
+    st.caption("Choose a sector to see its industries, then select an industry below to see its highest-ranked companies.")
     sectors_in_data = sorted(df_ind_breakdown['Sector'].dropna().unique().tolist())
     selected_sector = st.selectbox(
-        "Filter by Sector",
-        options=["All Sectors"] + sectors_in_data,
-        index=0,
+        "1. Choose a sector",
+        options=sectors_in_data,
+        key="industry_drilldown_sector",
     )
 
     df_ind_display = df_ind_breakdown.copy()
-    if selected_sector != "All Sectors":
-        df_ind_display = df_ind_display[df_ind_display['Sector'] == selected_sector]
+    df_ind_display = df_ind_display[df_ind_display['Sector'] == selected_sector]
+    industry_options = sorted(df_ind_display['Industry'].dropna().unique().tolist())
 
     column_mapping = {
         'Industry': 'Industry',
@@ -324,7 +323,8 @@ with tab_industries:
         use_container_width=True,
     )
 
-    render_top_ranked("industry", sorted(df_ind_breakdown['Industry'].dropna().unique().tolist()), "Industry")
+    if industry_options:
+        render_top_ranked("industry", industry_options, "Industry")
 
     # HQM Scores by Industry
     if industry_hqm:
