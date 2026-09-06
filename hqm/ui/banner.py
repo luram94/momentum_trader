@@ -42,9 +42,9 @@ def render_regime_banner() -> None:
 
     slope = "rising" if snap['sma10_rising'] else "falling"
     detail = (
-        f"{snap['proxy']} ${snap['close']:,.2f} · "
-        f"SMA20 ${snap['sma20']:,.2f} · SMA50 ${snap['sma50']:,.2f} · "
-        f"SMA200 ${snap['sma200']:,.2f} · SMA10 {slope}"
+        f"{snap['proxy']} \\${snap['close']:,.2f} · "
+        f"SMA20 \\${snap['sma20']:,.2f} · SMA50 \\${snap['sma50']:,.2f} · "
+        f"SMA200 \\${snap['sma200']:,.2f} · SMA10 {slope}"
     )
     exposure = _exposure_pct(snap['max_exposure'])
 

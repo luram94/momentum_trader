@@ -5,6 +5,7 @@ Track and manage portfolio positions.
 """
 
 import streamlit as st
+from hqm.ui.design import page_header, research_note
 import pandas as pd
 from datetime import datetime
 
@@ -27,8 +28,9 @@ st.set_page_config(
 
 init_session_state()
 
-st.title("Portfolio Tracking")
-st.markdown("Track your positions and performance.")
+page_header("Portfolio", "Review position sizing, allocation, and performance in one place.")
+research_note()
+
 
 st.warning(
     "**Shared demo storage** -- this app has no user accounts. Portfolio "

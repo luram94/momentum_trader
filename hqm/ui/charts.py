@@ -15,14 +15,14 @@ from hqm.formatting import frac_to_pct, format_pct
 
 # Theme colors matching the Streamlit config
 COLORS = {
-    'primary': '#198754',
-    'success': '#20c997',
-    'warning': '#ffc107',
-    'danger': '#dc3545',
-    'background': '#0d1117',
-    'paper': '#161b22',
-    'text': '#c9d1d9',
-    'grid': '#30363d',
+    'primary': '#5eead4',
+    'success': '#34d399',
+    'warning': '#fbbf24',
+    'danger': '#fb7185',
+    'background': '#0b1423',
+    'paper': '#111f32',
+    'text': '#e6edf7',
+    'grid': '#26364a',
 }
 
 
@@ -31,7 +31,8 @@ def _apply_dark_theme(fig: go.Figure) -> go.Figure:
     fig.update_layout(
         paper_bgcolor=COLORS['paper'],
         plot_bgcolor=COLORS['background'],
-        font=dict(color=COLORS['text']),
+        font=dict(color=COLORS['text'], family='Arial, sans-serif'),
+        colorway=['#5eead4', '#60a5fa', '#a78bfa', '#fbbf24', '#fb7185'],
         xaxis=dict(
             gridcolor=COLORS['grid'],
             zerolinecolor=COLORS['grid'],
@@ -182,7 +183,7 @@ def create_equity_curve(portfolio_history: List[Dict[str, Any]]) -> go.Figure:
         name='Portfolio Value',
         line=dict(color=COLORS['primary'], width=2),
         fill='tozeroy',
-        fillcolor="rgba(25, 135, 84, 0.2)",
+        fillcolor="rgba(94, 234, 212, 0.12)",
     ))
 
     fig.update_layout(

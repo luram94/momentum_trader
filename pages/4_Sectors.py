@@ -5,6 +5,7 @@ Sector and industry analysis and performance breakdown.
 """
 
 import streamlit as st
+from hqm.ui.design import page_header, research_note
 import pandas as pd
 
 from hqm.logger import get_logger
@@ -34,8 +35,9 @@ st.set_page_config(
 
 init_session_state()
 
-st.title("Sector & Industry Analysis")
-st.markdown("Analyze sector and industry distribution and performance.")
+page_header("Sector intelligence", "Explore where momentum is concentrated across the stock universe.")
+research_note()
+
 
 # Check for data
 stock_count = get_stock_count()

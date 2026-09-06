@@ -5,8 +5,10 @@ HQM Momentum Scanner with filters and results display.
 """
 
 import streamlit as st
+from hqm.ui.design import page_header, research_note
 import pandas as pd
 from datetime import datetime
+from urllib.parse import quote
 
 from hqm.logger import get_logger
 from hqm.config_loader import get_config
@@ -16,10 +18,12 @@ from hqm.database import (
     get_data_age_hours,
     get_stock_count,
     get_sector_breakdown,
+    get_last_refresh,
 )
 from hqm.risk_metrics import calculate_all_risk_metrics
 from hqm.formatting import frac_cols_to_pct
 from hqm.ui.state import init_session_state
+from hqm.ui.design import freshness_label
 from hqm.ui.banner import render_regime_banner
 from hqm.ui.charts import (
     create_allocation_chart,
@@ -38,9 +42,22 @@ st.set_page_config(
 
 init_session_state()
 
-st.title("HQM Momentum Scanner")
+page_header("Momentum scanner", "Find consistent strength across four timeframes. Build a shortlist with transparent, rules-based filters.")
+research_note()
 
 render_regime_banner()
+
+
+SCAN_KEYS = (
+    "portfolio_size", "num_positions", "sma10_filter_enabled", "max_sma10_distance",
+    "rsi_filter_enabled", "rsi_min", "rsi_max", "volume_filter_enabled", "min_volume",
+    "atr_filter_enabled", "max_atr_percent", "diversification_enabled",
+    "max_per_sector", "sector_filter",
+)
+
+
+def scan_settings():
+    return {key: st.session_state[key] for key in SCAN_KEYS}
 
 
 def refresh_data():
@@ -54,7 +71,7 @@ def refresh_data():
 
     try:
         stats = fetch_and_store_data(progress_callback)
-        st.success(f"Refreshed {stats['total_stored']} stocks in {stats['duration_seconds']:.1f}s")
+        st.session_state.refresh_notice = f"Refreshed {stats['total_stored']:,} stocks in {stats['duration_seconds']:.1f}s"
         progress_bar.empty()
         status_text.empty()
         return True
@@ -62,10 +79,18 @@ def refresh_data():
         st.error(f"Refresh failed: {str(e)}")
         logger.error(f"Data refresh failed: {e}")
         return False
+    finally:
+        progress_bar.empty()
+        status_text.empty()
 
 
 def run_scan():
     """Execute HQM scan with current filter settings."""
+    if st.session_state.rsi_filter_enabled and st.session_state.rsi_min > st.session_state.rsi_max:
+        st.error("Minimum RSI must be less than or equal to maximum RSI.")
+        return
+    st.session_state.scan_results = None
+    st.session_state.scan_summary = None
     progress_bar = st.progress(0)
     status_text = st.empty()
 
@@ -122,11 +147,13 @@ def run_scan():
             tickers = [r['Ticker'] for r in result['results']]
             weights = [r['Weight'] / 100 for r in result['results']]
 
-            risk_metrics = calculate_all_risk_metrics(
-                tickers=tickers,
-                weights=weights,
-                portfolio_value=portfolio_size
-            )
+            try:
+                risk_metrics = calculate_all_risk_metrics(
+                    tickers=tickers, weights=weights, portfolio_value=portfolio_size
+                )
+            except Exception:
+                logger.exception("Risk metrics unavailable; preserving scan results")
+                risk_metrics = {'data_available': False}
 
             result['summary']['risk_metrics'] = risk_metrics
 
@@ -134,6 +161,7 @@ def run_scan():
             st.session_state.scan_results = result['results']
             st.session_state.scan_summary = result['summary']
             st.session_state.last_scan_time = datetime.now()
+            st.session_state.scan_settings_snapshot = scan_settings()
 
             progress_bar.progress(1.0)
             status_text.text("Scan complete!")
@@ -167,8 +195,8 @@ with st.sidebar:
         st.warning("No data available")
 
     if st.button("Refresh Data", type="secondary", use_container_width=True):
-        refresh_data()
-        st.rerun()
+        if refresh_data():
+            st.rerun()
 
     st.divider()
 
@@ -263,16 +291,29 @@ with st.sidebar:
     if stock_count > 0:
         if st.button("Run Scan", type="primary", use_container_width=True):
             run_scan()
-            st.rerun()
     else:
         st.button("Run Scan", type="primary", use_container_width=True, disabled=True)
         st.caption("Refresh data first")
 
 
 # Main content area
+if "refresh_notice" in st.session_state:
+    st.success(st.session_state.pop("refresh_notice"))
+if stock_count and freshness_label(stock_count, data_age, config.data.cache_expiry_hours) != "Fresh":
+    st.warning("This stock snapshot needs a refresh. Results use cached prices, not live quotes.")
 if st.session_state.scan_results:
     results = st.session_state.scan_results
     summary = st.session_state.scan_summary
+
+    scanned_at = st.session_state.last_scan_time
+    if scanned_at:
+        st.caption(f"Scan completed {scanned_at:%d %b %Y · %H:%M:%S} (server time) · "
+                   f"Source snapshot: {summary.get('last_refresh') or 'unknown'}")
+    if st.session_state.get('scan_settings_snapshot') != scan_settings():
+        st.warning("Settings have changed since this scan. Run Scan again to update the results.")
+    current_refresh = get_last_refresh()
+    if current_refresh and summary.get('last_refresh') != current_refresh.isoformat():
+        st.warning("Market data has changed since this scan. Run Scan again to use the new snapshot.")
 
     # Summary metrics
     st.subheader("Scan Summary")
@@ -329,7 +370,8 @@ if st.session_state.scan_results:
     def make_tradingview_url(row):
         ticker = row['Ticker']
         exchange = row.get('Exchange', 'NASDAQ')
-        return f"https://es.tradingview.com/chart/EyK3ZRHL/?symbol={exchange}%3A{ticker}"
+        symbol = quote(f"{exchange}:{ticker}", safe="")
+        return f"https://www.tradingview.com/chart/?symbol={symbol}"
 
     df['TradingView'] = df.apply(make_tradingview_url, axis=1)
 
@@ -343,6 +385,9 @@ if st.session_state.scan_results:
         'Weight': 'Weight %',
         'Sector': 'Sector',
         'Industry': 'Industry',
+        'RSI': 'RSI',
+        'SMA10_Distance': 'SMA10 %',
+        'ATR_Percent': 'ATR %',
         'Return_1M': '1M %',
         'Return_3M': '3M %',
         'Return_6M': '6M %',
@@ -364,7 +409,10 @@ if st.session_state.scan_results:
         column_config={
             'Ticker': st.column_config.TextColumn(),
             'Price': st.column_config.NumberColumn(format="$%.2f"),
-            'HQM': st.column_config.NumberColumn(format="%.1f"),
+            'HQM': st.column_config.ProgressColumn(min_value=0, max_value=100, format='%.1f', help='Average percentile rank across four return windows.'),
+            'RSI': st.column_config.NumberColumn(format='%.1f'),
+            'SMA10 %': st.column_config.NumberColumn(format='%.1f%%'),
+            'ATR %': st.column_config.NumberColumn(format='%.1f%%'),
             'Value': st.column_config.NumberColumn(format="$%.2f"),
             'Weight %': st.column_config.NumberColumn(format="%.1f%%"),
             '1M %': st.column_config.NumberColumn(format="%.2f%%"),
@@ -378,6 +426,18 @@ if st.session_state.scan_results:
     )
 
     st.divider()
+
+    st.download_button(
+        "Download scan · CSV", display_df.to_csv(index=False).encode("utf-8"),
+        file_name=f"momentum-scan-{scanned_at:%Y%m%d-%H%M%S}.csv" if scanned_at else "momentum-scan.csv",
+        mime="text/csv",
+    )
+    with st.expander("Scan context & selection funnel"):
+        st.write(f"{summary.get('total_scanned', 0):,} stocks in the universe → "
+                 f"{summary.get('after_quality_filter', 0):,} after the quality filter → "
+                 f"{len(results)} selected positions.")
+        st.caption("Optional filters and the position limit further narrow the selection. Technical fields appear when those indicators were calculated.")
+        st.json(st.session_state.get('scan_settings_snapshot', {}))
 
     # Charts
     st.subheader("Visualizations")

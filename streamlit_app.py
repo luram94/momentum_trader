@@ -1,195 +1,107 @@
-"""
-HQM Momentum Scanner - Streamlit Application
-==============================================
-Interactive web interface for the High Quality Momentum strategy.
-Built with Streamlit for free cloud hosting.
-"""
+"""Momentum Trader research dashboard."""
 
+import pandas as pd
 import streamlit as st
 
-from hqm.logger import get_logger
 from hqm.config_loader import get_config
 from hqm.database import (
-    init_database,
-    get_data_age_hours,
-    get_last_refresh,
-    get_stock_count,
+    init_database, get_data_age_hours, get_last_refresh,
+    get_stock_count, get_sector_breakdown,
 )
 from hqm.ui.state import init_session_state
 from hqm.ui.banner import render_regime_banner
+from hqm.ui.design import page_header, freshness_label, research_note
+from hqm.ui.charts import create_sector_performance_chart
 
-# Initialize logger and config
-logger = get_logger('streamlit_app')
-config = get_config()
-
-# Page configuration
-st.set_page_config(
-    page_title="HQM Momentum Scanner",
-    page_icon="📈",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
-
-# Initialize database
+st.set_page_config(page_title="Overview · Momentum Trader", page_icon="📈", layout="wide")
 init_database()
-
-# Initialize session state
 init_session_state()
 
 
 def main():
-    """Main application entry point."""
+    config = get_config()
+    count = get_stock_count()
+    age = get_data_age_hours()
+    refreshed = get_last_refresh()
+    status = freshness_label(count, age, config.data.cache_expiry_hours)
+    sectors = get_sector_breakdown()
 
-    # Sidebar with app info
+    page_header("Find strength. Research with discipline.",
+                "A clear view of market momentum, sector leadership, and your next research ideas. "
+                "Start with the market context, then narrow your universe.", "Overview")
     with st.sidebar:
-        st.title("HQM Scanner")
-        st.markdown("---")
+        st.markdown("**Universe snapshot**")
+        st.metric("Stocks available", f"{count:,}")
+        st.caption(f"Data status: {status}")
+        if refreshed:
+            st.caption(f"Refreshed {refreshed:%d %b %Y · %H:%M} (server time)")
+        st.page_link("pages/1_Scanner.py", label="Open scanner →")
+        st.divider()
+        st.caption("FinViz · Stock universe and returns\n\nYahoo Finance · Historical prices")
 
-        # Data status
-        st.subheader("Data Status")
-
-        stock_count = get_stock_count()
-        data_age = get_data_age_hours()
-        last_refresh = get_last_refresh()
-
-        if stock_count > 0:
-            st.metric("Stocks in Database", f"{stock_count:,}")
-
-            if data_age < float('inf'):
-                expiry = config.data.cache_expiry_hours
-                age_color = "green" if data_age < expiry else "orange" if data_age < 2 * expiry else "red"
-                st.markdown(f"Data Age: :{age_color}[{data_age:.1f} hours]")
-
-            if last_refresh:
-                st.caption(f"Last refresh: {last_refresh.strftime('%Y-%m-%d %H:%M')}")
-        else:
-            st.warning("No data loaded. Go to Scanner to refresh data.")
-
-        st.markdown("---")
-
-        # Navigation info
-        st.subheader("Navigation")
-        st.markdown("""
-        - **Scanner**: Run HQM scans
-        - **Watchlist**: Track stocks
-        - **Portfolio**: Track positions
-        - **Sectors & Industries**: Sector/industry analysis
-        - **Backtest**: Historical testing
-        """)
-
-        st.markdown("---")
-        st.caption("HQM Momentum Scanner v2.0")
-        st.caption("Powered by Streamlit")
-
-    # Main content
-    st.title("HQM Momentum Scanner")
-    st.markdown("### High Quality Momentum Strategy Scanner")
-
+    actions = st.columns([1, 1, 2])
+    with actions[0]:
+        st.page_link("pages/1_Scanner.py", label="Open momentum scanner")
+    with actions[1]:
+        st.page_link("pages/5_Backtest.py", label="Test a strategy")
+    st.write("")
+    metrics = st.columns(4)
+    metrics[0].metric("Research universe", f"{count:,}", help="Stocks in the cached FinViz universe.")
+    metrics[1].metric("Sectors covered", len(sectors))
+    metrics[2].metric("Momentum windows", "4", help="1 month, 3 months, 6 months, and 1 year.")
+    metrics[3].metric("Snapshot status", status)
+    if count and status != "Fresh":
+        st.warning("The universe snapshot needs a refresh. Open Scanner and refresh data before researching current setups.")
+    st.write("")
     render_regime_banner()
 
-    # Overview metrics
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        st.metric(
-            "Portfolio Default",
-            f"${config.portfolio.default_size:,}",
-            help="Default portfolio size for scanning"
-        )
-
-    with col2:
-        st.metric(
-            "Default Positions",
-            config.portfolio.default_positions,
-            help="Default number of positions"
-        )
-
-    with col3:
-        st.metric(
-            "Stocks Available",
-            f"{stock_count:,}" if stock_count > 0 else "N/A",
-            help="Number of stocks in database"
-        )
-
-    with col4:
-        expiry = config.data.cache_expiry_hours
-        status = "Fresh" if data_age < expiry else "Stale" if data_age < 2 * expiry else "Outdated"
-        st.metric(
-            "Data Status",
-            status if stock_count > 0 else "No Data",
-            help="Data freshness status"
-        )
-
-    st.markdown("---")
-
-    # Feature cards
-    st.subheader("Features")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
+    st.subheader("Sector pulse")
+    st.caption("Average stock returns within each sector of the cached universe · Equal weight · 3 months")
+    if sectors:
+        frame = pd.DataFrame(sectors)
+        valid = frame.dropna(subset=['Avg_Return_3M'])
+        if not valid.empty:
+            chart, context = st.columns([2, 1])
+            with chart:
+                st.plotly_chart(create_sector_performance_chart(valid.to_dict('records')), use_container_width=True)
+            with context:
+                leader = valid.loc[valid['Avg_Return_3M'].idxmax()]
+                with st.container(border=True):
+                    st.caption("SECTOR LEADER · 3M")
+                    st.subheader(leader['Sector'])
+                    st.metric("Average return", f"{leader['Avg_Return_3M'] * 100:+.1f}%")
+                    st.caption(f"Across {int(leader['Count']):,} stocks. Sector averages can hide large differences between individual stocks.")
+                with st.container(border=True):
+                    positive = int((valid['Avg_Return_3M'] > 0).sum())
+                    st.metric("Sectors with positive returns", f"{positive} / {len(valid)}")
+                    st.page_link("pages/4_Sectors.py", label="Explore sectors & industries →")
+        else:
+            st.info("Sector returns are unavailable in this snapshot. Refresh data in Scanner.")
+    else:
         with st.container(border=True):
-            st.markdown("#### Scanner")
-            st.markdown("""
-            Run HQM momentum scans with advanced filters:
-            - SMA10 distance filter
-            - RSI overbought filter
-            - Volume filter
-            - Sector diversification
-            """)
-            st.page_link("pages/1_Scanner.py", label="Go to Scanner", icon="🔍")
+            st.subheader("Build your first research snapshot")
+            st.write("Open Scanner, refresh the stock universe, then run a scan. Refreshing may take a few minutes; the snapshot is reused across pages.")
+            st.page_link("pages/1_Scanner.py", label="Get started in Scanner →")
 
-        with st.container(border=True):
-            st.markdown("#### Portfolio Tracking")
-            st.markdown("""
-            Track your positions:
-            - Add/close positions
-            - P&L tracking
-            - Performance metrics
-            """)
-            st.page_link("pages/3_Portfolio.py", label="Go to Portfolio", icon="💼")
-
-    with col2:
-        with st.container(border=True):
-            st.markdown("#### Watchlist")
-            st.markdown("""
-            Monitor stocks of interest:
-            - Add stocks to watch
-            - Set target prices
-            - Track price changes
-            """)
-            st.page_link("pages/2_Watchlist.py", label="Go to Watchlist", icon="👁️")
-
-        with st.container(border=True):
-            st.markdown("#### Backtesting")
-            st.markdown("""
-            Test strategy performance:
-            - Historical backtesting
-            - Custom date ranges
-            - Performance metrics
-            """)
-            st.page_link("pages/5_Backtest.py", label="Go to Backtest", icon="📊")
-
-    # Strategy info
-    st.markdown("---")
-    st.subheader("About HQM Strategy")
-
-    with st.expander("How it works", expanded=False):
-        st.markdown("""
-        The **High Quality Momentum (HQM)** strategy selects stocks based on their
-        relative momentum across multiple timeframes:
-
-        1. **Calculate Returns**: 1-month, 3-month, 6-month, and 1-year returns
-        2. **Percentile Ranking**: Rank each stock by percentile in each timeframe
-        3. **HQM Score**: Average of all four percentile rankings
-        4. **Quality Filter**: Only include stocks with minimum 25th percentile in ALL timeframes
-        5. **Position Sizing**: Equal-weight allocation across top positions
-
-        **Key Advantages:**
-        - Captures momentum across multiple timeframes
-        - Quality filter avoids momentum traps
-        - Systematic, rules-based approach
-        """)
+    st.subheader("Your research workflow")
+    workflows = [
+        ("01 / Discover", "Screen for consistent momentum", "Rank stocks across four return windows and refine your shortlist with technical filters.", "pages/1_Scanner.py", "Launch scanner"),
+        ("02 / Follow", "Turn a shortlist into a watchlist", "Track target entry prices and keep notes alongside the stocks you are researching.", "pages/2_Watchlist.py", "Open watchlist"),
+        ("03 / Evaluate", "Understand exposure and outcomes", "Review portfolio allocation or use the strategy lab to inspect historical drawdowns.", "pages/3_Portfolio.py", "Review portfolio"),
+    ]
+    for column, (step, title, text, page, label) in zip(st.columns(3), workflows):
+        with column, st.container(border=True):
+            st.caption(step)
+            st.markdown(f"#### {title}")
+            st.write(text)
+            st.page_link(page, label=f"{label} →")
+    with st.expander("Methodology & data limitations"):
+        st.write(f"HQM is the average of percentile ranks for 1-month, 3-month, 6-month, and 1-year returns. "
+                 f"Stocks must meet the configured minimum {config.strategy.min_percentile_threshold:g}th percentile "
+                 "in every window before optional filters are applied. Selected stocks receive equal target allocations, rounded to whole shares.")
+        st.write("Rankings depend on the selected universe. Data providers may be delayed or unavailable, and missing indicators can exclude stocks. "
+                 "Historical simulations cannot guarantee future results. Watchlist and portfolio records are shared on the public demo and may reset on redeploy.")
+    research_note()
 
 
 if __name__ == "__main__":

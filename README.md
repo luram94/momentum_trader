@@ -238,3 +238,35 @@ MIT License
 
 - Strategy inspired by [Qullamaggie](https://qullamaggie.com/) momentum trading approach
 - Data provided by [FinViz](https://finviz.com/) and [Yahoo Finance](https://finance.yahoo.com/)
+
+## Research workspace
+
+The overview shows snapshot freshness, sector leadership, and the share of sectors
+with positive three-month average returns. These are equal-weight stock averages
+within the cached universe, not sector ETF returns. All six pages share a dark
+navy theme with teal accents and responsive spacing.
+
+Scanner results include a timestamp, source snapshot, optional technical indicator
+columns, an HQM score bar, a CSV export, and the exact settings used. Changing
+settings or refreshing the universe flags existing results for a new scan.
+Risk-provider failures leave the stock selection available with risk metrics
+explicitly marked unavailable. Invalid RSI ranges are rejected before scanning.
+
+### Verification and deployment
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest
+streamlit run streamlit_app.py
+```
+
+GitHub Actions runs the suite on pushes and pull requests. The UI regression tests
+execute all pages with empty and populated temporary databases and replace market
+providers with deterministic fixtures; they do not verify live provider uptime.
+
+For Streamlit Community Cloud, use `streamlit_app.py` as the entry point and
+Python 3.12. Validate the branch before merging into the deployment branch. After
+deployment, check Home, refresh the universe in Scanner, and run a scan to confirm
+live FinViz and Yahoo Finance access. Existing Watchlist and Portfolio storage is
+still shared, with no user accounts; a private multi-user deployment needs
+authentication and per-user storage before it can hold private records.

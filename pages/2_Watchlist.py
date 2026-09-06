@@ -5,6 +5,7 @@ Manage and track stocks of interest.
 """
 
 import streamlit as st
+from hqm.ui.design import page_header, research_note
 import pandas as pd
 
 from hqm.logger import get_logger
@@ -26,8 +27,9 @@ st.set_page_config(
 
 init_session_state()
 
-st.title("Watchlist")
-st.markdown("Track stocks you're interested in for potential entry.")
+page_header("Watchlist", "Keep your next research ideas in view. Track target prices and changes in momentum.")
+research_note()
+
 
 st.warning(
     "**Shared demo storage** -- this app has no user accounts. Watchlist "

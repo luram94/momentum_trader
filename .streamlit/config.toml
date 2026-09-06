@@ -1,8 +1,9 @@
 [theme]
-primaryColor = "#198754"
-backgroundColor = "#0d1117"
-secondaryBackgroundColor = "#161b22"
-textColor = "#c9d1d9"
+base = "dark"
+primaryColor = "#5eead4"
+backgroundColor = "#0b1423"
+secondaryBackgroundColor = "#111f32"
+textColor = "#e6edf7"
 font = "sans serif"
 
 [server]
@@ -12,3 +13,6 @@ fileWatcherType = "none"
 
 [browser]
 gatherUsageStats = false
+
+[client]
+showSidebarNavigation = false

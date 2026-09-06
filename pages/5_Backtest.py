@@ -5,6 +5,7 @@ Historical backtesting of the HQM momentum strategy.
 """
 
 import streamlit as st
+from hqm.ui.design import page_header, research_note
 import pandas as pd
 from datetime import datetime, timedelta
 
@@ -29,8 +30,9 @@ st.set_page_config(
 
 init_session_state()
 
-st.title("Strategy Backtesting")
-st.markdown("Test the HQM momentum strategy on historical data.")
+page_header("Strategy lab", "Explore historical outcomes, trading costs, and drawdowns before applying a strategy.")
+research_note()
+
 
 
 def execute_backtest(
