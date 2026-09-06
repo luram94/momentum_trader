@@ -243,8 +243,9 @@ MIT License
 
 The overview shows snapshot freshness, sector leadership, and the share of sectors
 with positive three-month average returns. These are equal-weight stock averages
-within the cached universe, not sector ETF returns. All six pages share a dark
-navy theme with teal accents and responsive spacing.
+within the cached universe, not sector ETF returns. All six pages share a light
+editorial research workspace with deep-green panels, compact data cards, and
+responsive spacing.
 
 Scanner results include a timestamp, source snapshot, optional technical indicator
 columns, an HQM score bar, a CSV export, and the exact settings used. Changing

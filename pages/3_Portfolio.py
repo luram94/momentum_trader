@@ -29,7 +29,6 @@ st.set_page_config(
 init_session_state()
 
 page_header("Portfolio", "Review position sizing, allocation, and performance in one place.")
-research_note()
 
 
 st.warning(
@@ -280,3 +279,6 @@ with tab2:
 
     else:
         st.info("No closed positions yet.")
+
+
+research_note()

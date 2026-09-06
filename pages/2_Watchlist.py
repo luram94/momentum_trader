@@ -28,7 +28,6 @@ st.set_page_config(
 init_session_state()
 
 page_header("Watchlist", "Keep your next research ideas in view. Track target prices and changes in momentum.")
-research_note()
 
 
 st.warning(
@@ -188,3 +187,6 @@ else:
 
     The watchlist will show current prices from the last data refresh.
     """)
+
+
+research_note()

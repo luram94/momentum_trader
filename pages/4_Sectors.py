@@ -36,7 +36,6 @@ st.set_page_config(
 init_session_state()
 
 page_header("Sector intelligence", "Explore where momentum is concentrated across the stock universe.")
-research_note()
 
 
 # Check for data
@@ -346,3 +345,6 @@ with st.expander("Sector & Industry Analysis Tips", expanded=False):
     - Monitor sector and industry rotation weekly
     - Consider both absolute and relative momentum
     """)
+
+
+research_note()

@@ -31,7 +31,6 @@ st.set_page_config(
 init_session_state()
 
 page_header("Strategy lab", "Explore historical outcomes, trading costs, and drawdowns before applying a strategy.")
-research_note()
 
 
 
@@ -599,3 +598,6 @@ with st.expander("About HQM Backtesting", expanded=False):
     - **Max Drawdown < 20%**: Acceptable for most strategies
     - **Win Rate**: Less important than profit factor
     """)
+
+
+research_note()

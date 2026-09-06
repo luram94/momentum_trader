@@ -15,31 +15,34 @@ from hqm.formatting import frac_to_pct, format_pct
 
 # Theme colors matching the Streamlit config
 COLORS = {
-    'primary': '#5eead4',
-    'success': '#34d399',
-    'warning': '#fbbf24',
-    'danger': '#fb7185',
-    'background': '#0b1423',
-    'paper': '#111f32',
-    'text': '#e6edf7',
-    'grid': '#26364a',
+    'primary': '#26765b',
+    'success': '#39866a',
+    'warning': '#bc923a',
+    'danger': '#bd654b',
+    'background': '#ffffff',
+    'paper': '#ffffff',
+    'text': '#28493d',
+    'grid': '#e7ede7',
 }
 
 
-def _apply_dark_theme(fig: go.Figure) -> go.Figure:
-    """Apply consistent dark theme to a Plotly figure."""
+def _apply_theme(fig: go.Figure) -> go.Figure:
+    """Apply consistent light theme to a Plotly figure."""
     fig.update_layout(
         paper_bgcolor=COLORS['paper'],
         plot_bgcolor=COLORS['background'],
         font=dict(color=COLORS['text'], family='Arial, sans-serif'),
-        colorway=['#5eead4', '#60a5fa', '#a78bfa', '#fbbf24', '#fb7185'],
+        colorway=['#26765b', '#8fae8b', '#c4cfa6', '#bc923a', '#bd654b'],
+        hoverlabel=dict(bgcolor='#183d35', font_color='white', bordercolor='#183d35'),
         xaxis=dict(
             gridcolor=COLORS['grid'],
             zerolinecolor=COLORS['grid'],
+            automargin=True,
         ),
         yaxis=dict(
             gridcolor=COLORS['grid'],
             zerolinecolor=COLORS['grid'],
+            automargin=True,
         ),
         margin=dict(l=40, r=40, t=40, b=40),
     )
@@ -75,7 +78,7 @@ def create_allocation_chart(results: List[Dict[str, Any]]) -> go.Figure:
         height=max(400, len(df) * 35),
     )
 
-    return _apply_dark_theme(fig)
+    return _apply_theme(fig)
 
 
 def create_hqm_score_chart(results: List[Dict[str, Any]]) -> go.Figure:
@@ -113,7 +116,7 @@ def create_hqm_score_chart(results: List[Dict[str, Any]]) -> go.Figure:
         height=max(400, len(df) * 35),
     )
 
-    return _apply_dark_theme(fig)
+    return _apply_theme(fig)
 
 
 def create_sector_pie_chart(
@@ -136,7 +139,8 @@ def create_sector_pie_chart(
         df,
         values=value_column,
         names='Sector',
-        color_discrete_sequence=px.colors.qualitative.Set2,
+        color_discrete_sequence=['#26765b', '#85aa8b', '#c2d3a9', '#dbbe7a', '#bd795e', '#7894a0', '#a79ba6'],
+        hole=.58,
     )
 
     fig.update_traces(
@@ -157,7 +161,7 @@ def create_sector_pie_chart(
         height=450,
     )
 
-    return _apply_dark_theme(fig)
+    return _apply_theme(fig)
 
 
 def create_equity_curve(portfolio_history: List[Dict[str, Any]]) -> go.Figure:
@@ -183,7 +187,7 @@ def create_equity_curve(portfolio_history: List[Dict[str, Any]]) -> go.Figure:
         name='Portfolio Value',
         line=dict(color=COLORS['primary'], width=2),
         fill='tozeroy',
-        fillcolor="rgba(94, 234, 212, 0.12)",
+        fillcolor="rgba(38, 118, 91, 0.10)",
     ))
 
     fig.update_layout(
@@ -194,7 +198,7 @@ def create_equity_curve(portfolio_history: List[Dict[str, Any]]) -> go.Figure:
         height=400,
     )
 
-    return _apply_dark_theme(fig)
+    return _apply_theme(fig)
 
 
 def create_drawdown_chart(portfolio_history: List[Dict[str, Any]]) -> go.Figure:
@@ -234,7 +238,7 @@ def create_drawdown_chart(portfolio_history: List[Dict[str, Any]]) -> go.Figure:
         height=300,
     )
 
-    return _apply_dark_theme(fig)
+    return _apply_theme(fig)
 
 
 def create_returns_comparison_chart(
@@ -287,11 +291,11 @@ def create_returns_comparison_chart(
         ),
     )
 
-    return _apply_dark_theme(fig)
+    return _apply_theme(fig)
 
 
 def create_sector_performance_chart(
-    sector_data: List[Dict[str, Any]]
+    sector_data: List[Dict[str, Any]], window: str = '3M'
 ) -> go.Figure:
     """
     Create a bar chart showing sector performance.
@@ -302,28 +306,32 @@ def create_sector_performance_chart(
     Returns:
         Plotly figure
     """
+    if window not in ('1M', '3M', '6M', '1Y'):
+        raise ValueError('Unsupported return window')
+    column = f'Avg_Return_{window}'
     df = pd.DataFrame(sector_data)
 
-    if 'Avg_Return_3M' in df.columns:
-        df = df.sort_values('Avg_Return_3M', ascending=True)
-        colors = df['Avg_Return_3M'].apply(
+    if column in df.columns:
+        df = df.dropna(subset=[column])
+        df = df.sort_values(column, ascending=True)
+        colors = df[column].apply(
             lambda x: COLORS['success'] if x > 0 else COLORS['danger']
         )
 
         fig = go.Figure(go.Bar(
-            x=frac_to_pct(df['Avg_Return_3M']),
+            x=frac_to_pct(df[column]),
             y=df['Sector'],
             orientation='h',
             marker_color=colors,
-            text=df['Avg_Return_3M'].apply(lambda x: format_pct(x, 1)),
+            text=df[column].apply(lambda x: format_pct(x, 1)),
             textposition='auto',
         ))
 
         fig.update_layout(
-            title='Sector Performance (3-Month Avg Return)',
+            title=dict(text=''),
             xaxis_title='Return (%)',
-            yaxis_title='Sector',
-            height=max(400, len(df) * 35),
+            yaxis_title=None,
+            height=max(340, len(df) * 29),
         )
     else:
         # Fallback to count-based chart
@@ -337,11 +345,11 @@ def create_sector_performance_chart(
         fig.update_layout(
             title='Stocks by Sector',
             xaxis_title='Count',
-            yaxis_title='Sector',
-            height=max(400, len(df) * 35),
+            yaxis_title=None,
+            height=max(340, len(df) * 29),
         )
 
-    return _apply_dark_theme(fig)
+    return _apply_theme(fig)
 
 
 def create_industry_pie_chart(
@@ -374,7 +382,8 @@ def create_industry_pie_chart(
         df,
         values=value_column,
         names='Industry',
-        color_discrete_sequence=px.colors.qualitative.Set3,
+        color_discrete_sequence=['#26765b', '#85aa8b', '#c2d3a9', '#dbbe7a', '#bd795e', '#7894a0', '#a79ba6'],
+        hole=.58,
     )
 
     fig.update_traces(
@@ -395,7 +404,7 @@ def create_industry_pie_chart(
         height=500,
     )
 
-    return _apply_dark_theme(fig)
+    return _apply_theme(fig)
 
 
 def create_industry_performance_chart(
@@ -456,4 +465,23 @@ def create_industry_performance_chart(
             height=max(500, len(df) * 28),
         )
 
-    return _apply_dark_theme(fig)
+    return _apply_theme(fig)
+
+
+def create_momentum_heatmap(sector_data: List[Dict[str, Any]]) -> go.Figure:
+    """Compare actual sector returns, preserving unavailable values as blanks."""
+    df = pd.DataFrame(sector_data).sort_values('Avg_Return_3M', ascending=False, na_position='last')
+    columns = ['Avg_Return_1M', 'Avg_Return_3M', 'Avg_Return_6M', 'Avg_Return_1Y']
+    values = df.reindex(columns=columns).apply(pd.to_numeric, errors='coerce') * 100
+    text = [[f'{v:+.1f}%' if pd.notna(v) else '—' for v in row] for row in values.values]
+    fig = go.Figure(go.Heatmap(
+        z=values.values, x=['1 month', '3 months', '6 months', '1 year'], y=df['Sector'],
+        text=text, texttemplate='%{text}', textfont=dict(size=12),
+        colorscale=[[0, '#bf715d'], [.5, '#f3f5eb'], [1, '#4b9275']], zmid=0,
+        xgap=5, ygap=5, showscale=False, hoverongaps=False,
+        hovertemplate='%{y}<br>%{x}: %{z:.2f}%<extra></extra>',
+    ))
+    fig.update_layout(height=max(240, len(df) * 34 + 70),
+                      xaxis=dict(side='top', showgrid=False),
+                      yaxis=dict(autorange='reversed', showgrid=False))
+    return _apply_theme(fig)

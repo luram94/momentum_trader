@@ -5,7 +5,7 @@ HQM Momentum Scanner with filters and results display.
 """
 
 import streamlit as st
-from hqm.ui.design import page_header, research_note
+from hqm.ui.design import page_header, research_note, empty_workspace, workflow_steps, section_heading
 import pandas as pd
 from datetime import datetime
 from urllib.parse import quote
@@ -43,7 +43,6 @@ st.set_page_config(
 init_session_state()
 
 page_header("Momentum scanner", "Find consistent strength across four timeframes. Build a shortlist with transparent, rules-based filters.")
-research_note()
 
 render_regime_banner()
 
@@ -182,10 +181,10 @@ def run_scan():
 
 # Sidebar filters
 with st.sidebar:
-    st.header("Scan Settings")
+    st.header("Build your scan")
 
     # Data refresh section
-    st.subheader("Data Management")
+    st.caption("01 / STOCK UNIVERSE")
     stock_count = get_stock_count()
     data_age = get_data_age_hours()
 
@@ -201,7 +200,7 @@ with st.sidebar:
     st.divider()
 
     # Portfolio settings
-    st.subheader("Portfolio Settings")
+    st.caption("02 / POSITION SIZING")
 
     st.number_input(
         "Portfolio Size ($)",
@@ -221,69 +220,64 @@ with st.sidebar:
 
     st.divider()
 
-    # Technical filters
-    st.subheader("Technical Filters")
+    st.caption("03 / REFINE THE UNIVERSE")
+    with st.expander("Technical filters", expanded=False):
+        st.checkbox("SMA10 Distance Filter", key="sma10_filter_enabled")
+        if st.session_state.sma10_filter_enabled:
+            st.slider(
+                "Max SMA10 Distance (%)",
+                min_value=0.0,
+                max_value=30.0,
+                step=1.0,
+                key="max_sma10_distance",
+            )
 
-    st.checkbox("SMA10 Distance Filter", key="sma10_filter_enabled")
-    if st.session_state.sma10_filter_enabled:
-        st.slider(
-            "Max SMA10 Distance (%)",
-            min_value=0.0,
-            max_value=30.0,
-            step=1.0,
-            key="max_sma10_distance",
+        st.checkbox("RSI Filter", key="rsi_filter_enabled")
+        if st.session_state.rsi_filter_enabled:
+            col1, col2 = st.columns(2)
+            with col1:
+                st.number_input("Min RSI", 0, 100, key="rsi_min")
+            with col2:
+                st.number_input("Max RSI", 0, 100, key="rsi_max")
+
+        st.checkbox("Volume Filter", key="volume_filter_enabled")
+        if st.session_state.volume_filter_enabled:
+            st.number_input(
+                "Min Avg Volume",
+                min_value=100000,
+                max_value=10000000,
+                step=100000,
+                key="min_volume",
+            )
+
+        st.checkbox("ATR Filter", key="atr_filter_enabled")
+        if st.session_state.atr_filter_enabled:
+            st.slider(
+                "Max ATR (%)",
+                min_value=1.0,
+                max_value=20.0,
+                step=0.5,
+                key="max_atr_percent",
+            )
+
+    with st.expander("Sectors & diversification", expanded=False):
+        st.checkbox("Sector Diversification", key="diversification_enabled")
+        if st.session_state.diversification_enabled:
+            st.number_input(
+                "Max per Sector",
+                min_value=1,
+                max_value=10,
+                key="max_per_sector",
+            )
+
+        # Sector selection
+        sectors = get_sector_breakdown()
+        sector_names = [s['Sector'] for s in sectors if s['Sector']]
+        st.multiselect(
+            "Include Sectors (empty = all)",
+            options=sector_names,
+            key="sector_filter",
         )
-
-    st.checkbox("RSI Filter", key="rsi_filter_enabled")
-    if st.session_state.rsi_filter_enabled:
-        col1, col2 = st.columns(2)
-        with col1:
-            st.number_input("Min RSI", 0, 100, key="rsi_min")
-        with col2:
-            st.number_input("Max RSI", 0, 100, key="rsi_max")
-
-    st.checkbox("Volume Filter", key="volume_filter_enabled")
-    if st.session_state.volume_filter_enabled:
-        st.number_input(
-            "Min Avg Volume",
-            min_value=100000,
-            max_value=10000000,
-            step=100000,
-            key="min_volume",
-        )
-
-    st.checkbox("ATR Filter", key="atr_filter_enabled")
-    if st.session_state.atr_filter_enabled:
-        st.slider(
-            "Max ATR (%)",
-            min_value=1.0,
-            max_value=20.0,
-            step=0.5,
-            key="max_atr_percent",
-        )
-
-    st.divider()
-
-    # Sector filters
-    st.subheader("Sector Filters")
-
-    st.checkbox("Sector Diversification", key="diversification_enabled")
-    if st.session_state.diversification_enabled:
-        st.number_input(
-            "Max per Sector",
-            min_value=1,
-            max_value=10,
-            key="max_per_sector",
-        )
-
-    # Sector selection
-    sectors = get_sector_breakdown()
-    sector_names = [s['Sector'] for s in sectors if s['Sector']]
-    st.multiselect(
-        "Include Sectors (empty = all)",
-        options=sector_names,
-        key="sector_filter",
-    )
 
     st.divider()
 
@@ -316,7 +310,7 @@ if st.session_state.scan_results:
         st.warning("Market data has changed since this scan. Run Scan again to use the new snapshot.")
 
     # Summary metrics
-    st.subheader("Scan Summary")
+    section_heading("Your momentum shortlist", "01 / Scan results")
 
     col1, col2, col3, col4, col5 = st.columns(5)
 
@@ -362,7 +356,7 @@ if st.session_state.scan_results:
     st.divider()
 
     # Results table
-    st.subheader("Selected Positions")
+    section_heading("Selected positions", "02 / Compare & research")
 
     df = pd.DataFrame(results)
 
@@ -440,7 +434,7 @@ if st.session_state.scan_results:
         st.json(st.session_state.get('scan_settings_snapshot', {}))
 
     # Charts
-    st.subheader("Visualizations")
+    section_heading("Inside the allocation", "03 / Portfolio composition")
 
     tab1, tab2, tab3 = st.tabs(["Allocation", "HQM Scores", "Returns"])
 
@@ -459,7 +453,7 @@ if st.session_state.scan_results:
     # Risk metrics details
     if 'risk_metrics' in summary and summary['risk_metrics']:
         st.divider()
-        st.subheader("Risk Metrics")
+        section_heading("Historical risk profile", "04 / Risk context")
 
         metrics = summary['risk_metrics']
 
@@ -489,10 +483,18 @@ if st.session_state.scan_results:
 
 else:
     # No results yet
-    st.info("Configure your scan settings in the sidebar and click 'Run Scan' to find momentum stocks.")
+    empty_workspace("Find your next research shortlist", "Set your portfolio size and filters in the sidebar, then run a scan. HQM ranks stocks on consistent strength across four timeframes.")
+    workflow_steps([
+        ("Start with the universe", "Refresh the FinViz snapshot to load prices and returns for eligible stocks."),
+        ("Define your selection", "Choose position sizing, then expand technical or sector filters to refine the search."),
+        ("Compare the evidence", "Review scores, return windows, and allocation. Export the shortlist for further research."),
+    ])
 
     # Show data status
     if get_stock_count() == 0:
         st.warning("No market data available. Click 'Refresh Data' in the sidebar to load data from FinViz.")
     else:
         st.success(f"Ready to scan {get_stock_count():,} stocks.")
+
+
+research_note()

@@ -1,9 +1,18 @@
-"""Shared presentation for the research workspace."""
-
+"""Presentation primitives for the Momentum Trader workspace."""
 from html import escape
 import math
+from pathlib import Path
 
 import streamlit as st
+
+PAGES = [
+    ("streamlit_app.py", "Overview", "01"),
+    ("pages/1_Scanner.py", "Momentum scanner", "02"),
+    ("pages/2_Watchlist.py", "Watchlist", "03"),
+    ("pages/3_Portfolio.py", "Portfolio", "04"),
+    ("pages/4_Sectors.py", "Sector intelligence", "05"),
+    ("pages/5_Backtest.py", "Strategy lab", "06"),
+]
 
 
 def freshness_label(stock_count: int, age: float, expiry: float) -> str:
@@ -14,54 +23,50 @@ def freshness_label(stock_count: int, age: float, expiry: float) -> str:
     return "Fresh" if age < expiry else "Refresh needed"
 
 
+def markup(content: str) -> None:
+    st.markdown(content, unsafe_allow_html=True)
+
+
 def apply_style() -> None:
-    """Use stable Streamlit element selectors; keep native navigation accessible."""
+    markup(f'<style>{Path(__file__).with_name("workspace.css").read_text()}</style>')
     with st.sidebar:
-        st.markdown("### Momentum Trader")
-        st.caption("HIGH QUALITY MOMENTUM")
-        for page, label in [
-            ("streamlit_app.py", "Overview"),
-            ("pages/1_Scanner.py", "Momentum scanner"),
-            ("pages/2_Watchlist.py", "Watchlist"),
-            ("pages/3_Portfolio.py", "Portfolio"),
-            ("pages/4_Sectors.py", "Sector intelligence"),
-            ("pages/5_Backtest.py", "Strategy lab"),
-        ]:
+        markup('<div class="mt-brand"><span class="mt-mark">↗</span>momentum<span style="font-weight:400">trader</span></div>'
+               '<div class="mt-nav-label">Research workspace</div>')
+        for page, label, _ in PAGES:
             st.page_link(page, label=label, use_container_width=True)
         st.divider()
-    st.markdown("""<style>
-    .block-container {max-width: 1440px; padding-top: 2.5rem; padding-bottom: 3rem;}
-    h1, h2, h3 {letter-spacing: -.035em;}
-    h1 {font-weight: 750 !important;}
-    [data-testid="stMetric"] {background: #111f32; border: 1px solid #26364a;
-        border-radius: 12px; padding: 18px 20px; height: 100%;}
-    [data-testid="stMetricLabel"] {color: #a8b8ce;}
-    [data-testid="stMetricValue"] {font-variant-numeric: tabular-nums;}
-    [data-testid="stSidebar"] {border-right: 1px solid #26364a;}
-    [data-testid="stButton"] button, [data-testid="stDownloadButton"] button {
-        border-radius: 8px; min-height: 2.7rem;}
-    [data-testid="stDataFrame"] {border: 1px solid #26364a; border-radius: 10px;}
-    .hqm-eyebrow {color: #5eead4; font-size: .75rem; font-weight: 700;
-        letter-spacing: .16em; text-transform: uppercase; margin-bottom: .6rem;}
-    .hqm-description {color: #a8b8ce; max-width: 760px; font-size: 1.05rem;
-        line-height: 1.7; margin-bottom: 1.8rem;}
-    @media (max-width: 640px) {
-        .block-container {padding: 4rem 1rem 2rem;}
-        h1 {font-size: 2rem !important;}
-        [data-testid="stMetric"] {padding: 12px;}
-    }
-    </style>""", unsafe_allow_html=True)
 
 
 def page_header(title: str, description: str, section: str = "Research workspace") -> None:
     apply_style()
-    st.markdown(f'<div class="hqm-eyebrow">Momentum Trader / {escape(section)}</div>',
-                unsafe_allow_html=True)
-    st.title(title)
-    st.markdown(f'<div class="hqm-description">{escape(description)}</div>',
-                unsafe_allow_html=True)
+    number = next((n for _, label, n in PAGES if label.lower() == title.lower()), "02")
+    markup(f'<div class="mt-topline"><b>Workspace / {escape(title)}</b><span>High quality momentum</span></div>'
+           f'<div class="mt-page-heading"><div><h1>{escape(title)}</h1><p>{escape(description)}</p></div>'
+           f'<span class="mt-page-number" aria-hidden="true">{number}</span></div>')
+
+
+def section_heading(title: str, note: str = "") -> None:
+    markup(f'<div class="mt-section"><h2>{escape(title)}</h2><span>{escape(note)}</span></div>')
+
+
+def stat_strip(items: list[tuple[str, str, str]]) -> None:
+    cards = ''.join(f'<div class="mt-stat"><div class="mt-stat-label">{escape(label)}</div>'
+                    f'<div class="mt-stat-value">{escape(value)}</div><div class="mt-stat-note">{escape(note)}</div></div>'
+                    for label, value, note in items)
+    markup(f'<div class="mt-stat-grid">{cards}</div>')
+
+
+def empty_workspace(title: str, description: str) -> None:
+    markup(f'<div class="mt-empty"><span class="mt-badge">Your research starts here</span>'
+           f'<h2>{escape(title)}</h2><p>{escape(description)}</p></div>')
+
+
+def workflow_steps(items: list[tuple[str, str]]) -> None:
+    cards = ''.join(f'<div class="mt-step"><b>0{i} /</b><h3>{escape(title)}</h3><p>{escape(text)}</p></div>'
+                    for i, (title, text) in enumerate(items, 1))
+    markup(f'<div class="mt-steps">{cards}</div>')
 
 
 def research_note() -> None:
-    st.caption("Research only · Prices are cached snapshots, not live quotes. "
-               "HQM scores rank relative momentum; they do not predict future returns.")
+    markup('<div class="mt-footer">MOMENTUM TRADER &nbsp; / &nbsp; Research only. Prices are cached snapshots, '
+           'not live quotes. HQM ranks relative momentum and does not predict future returns.</div>')
