@@ -39,6 +39,7 @@ def main():
            '<h1>A clearer view.<br><em>A stronger shortlist.</em></h1>'
            '<p>See where strength is building. Compare market leadership, find consistent momentum, and research your next move.</p></div>'
            f'<div class="mt-hero-aside">{feature}</div></div>')
+    render_regime_banner()
     actions = st.columns([1, 1, 2])
     with actions[0]:
         if st.button("Find momentum stocks →", type="primary", use_container_width=True):
@@ -60,8 +61,6 @@ def main():
         st.caption("FinViz / Universe & returns\n\nYahoo Finance / Price history")
     if count and status != "Fresh":
         st.warning("Refresh the universe in Scanner before researching current setups. This snapshot is out of date or its age is unknown.")
-    render_regime_banner()
-
     section_heading("Where strength is building", "01 / Sector intelligence")
     if not valid.empty:
         chart, briefing = st.columns([2.25, 1], gap="large")

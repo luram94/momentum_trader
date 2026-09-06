@@ -28,10 +28,13 @@ def render_regime_banner() -> None:
         CAUTION: 'Mixed trend conditions. The model calls for reduced exposure.',
         DOWNTREND: 'Weak trend conditions. The model avoids new long entries.',
     }[regime]
-    markup(f'<div class="mt-regime"><span class="mt-badge {regime}">{escape(regime)}</span>'
-           f'<span class="mt-regime-title">{escape(snap["proxy"])} market context</span>'
-           f'<span class="mt-regime-detail">{guidance}</span>'
-           f'<span class="mt-regime-exposure">Model exposure cap <b>{snap["max_exposure"] * 100:.0f}%</b></span></div>')
+    action = {UPTREND: 'FULL EXPOSURE ALLOWED', CAUTION: 'REDUCE EXPOSURE', DOWNTREND: 'AVOID NEW LONGS'}[regime]
+    markup(f'<div class="mt-regime mt-regime-{regime}">'
+           f'<div class="mt-regime-top"><span class="mt-badge {regime}">{escape(regime)}</span>'
+           f'<span class="mt-regime-kicker">MARKET TREND ALERT · {escape(snap["proxy"])}</span></div>'
+           f'<div class="mt-regime-main"><div><div class="mt-regime-title">{escape(action)}</div>'
+           f'<div class="mt-regime-detail">{escape(guidance)}</div></div>'
+           f'<div class="mt-regime-exposure"><small>MODEL EXPOSURE CAP</small><b>{snap["max_exposure"] * 100:.0f}%</b></div></div></div>')
     with st.expander(f'Market context details · As of {snap["as_of"]}'):
         st.caption("Rule-based trend classification, not an execution instruction. The scanner does not automatically apply this exposure cap.")
         st.dataframe([{
