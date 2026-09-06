@@ -1434,5 +1434,40 @@ def get_industry_hqm_scores() -> List[Dict[str, Any]]:
     return df.to_dict('records')
 
 
+def get_top_stocks_by_group(group: str, value: str, limit: int = 5) -> List[Dict[str, Any]]:
+    """Return the highest HQM-ranked stocks inside one sector or industry.
+
+    Percentiles are calculated against the full cached universe, matching the
+    scanner's ranking method, then the requested group is selected. This is a
+    read-only query and does not create a scan-history record.
+    """
+    if group not in ('sector', 'industry'):
+        raise ValueError("group must be 'sector' or 'industry'")
+    limit = max(1, min(int(limit), 25))
+    conn = get_connection()
+    frame = pd.read_sql_query(
+        """SELECT ticker AS Ticker, exchange AS Exchange, sector AS Sector,
+                  industry AS Industry, price AS Price,
+                  return_1m AS Return_1M, return_3m AS Return_3M,
+                  return_6m AS Return_6M, return_1y AS Return_1Y
+           FROM stocks
+           WHERE ticker IS NOT NULL""", conn)
+    conn.close()
+    if frame.empty:
+        return []
+    return_columns = ['Return_1M', 'Return_3M', 'Return_6M', 'Return_1Y']
+    percentile_columns = ['Pct_1M', 'Pct_3M', 'Pct_6M', 'Pct_1Y']
+    for return_col, pct_col in zip(return_columns, percentile_columns):
+        valid = frame[return_col].dropna()
+        frame[pct_col] = frame[return_col].apply(
+            lambda x: percentileofscore(valid, x, kind='mean') if pd.notna(x) else np.nan
+        )
+    frame['HQM_Score'] = frame[percentile_columns].mean(axis=1)
+    group_column = 'Sector' if group == 'sector' else 'Industry'
+    frame = frame[frame[group_column].eq(value)].dropna(subset=['HQM_Score'])
+    frame = frame.sort_values('HQM_Score', ascending=False).head(limit)
+    return frame.to_dict('records')
+
+
 # Initialize database on module import
 init_database()

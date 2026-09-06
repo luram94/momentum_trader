@@ -5,7 +5,7 @@ Sector and industry analysis and performance breakdown.
 """
 
 import streamlit as st
-from hqm.ui.design import page_header, research_note
+from hqm.ui.design import page_header, research_note, section_heading
 import pandas as pd
 
 from hqm.logger import get_logger
@@ -15,6 +15,7 @@ from hqm.database import (
     get_industry_breakdown,
     get_industry_hqm_scores,
     get_stock_count,
+    get_top_stocks_by_group,
 )
 from hqm.formatting import frac_cols_to_pct
 from hqm.ui.state import init_session_state
@@ -36,6 +37,46 @@ st.set_page_config(
 init_session_state()
 
 page_header("Sector intelligence", "Explore where momentum is concentrated across the stock universe.")
+
+
+def render_top_ranked(group: str, options: list[str], label: str) -> None:
+    """Render a focused top-five drilldown for a selected sector or industry."""
+    section_heading(f"Top ranked stocks", f"{label} / HQM ranking")
+    selected = st.selectbox(
+        f"Choose a {label.lower()}", options, key=f"leaders_{group}",
+        help="HQM scores are calculated against the full cached universe, then filtered to this group.",
+    )
+    leaders = get_top_stocks_by_group(group, selected, limit=5)
+    if not leaders:
+        st.info(f"No ranked stocks are available for {selected} in this snapshot.")
+        return
+    frame = pd.DataFrame(leaders)
+    frame.insert(0, "Rank", range(1, len(frame) + 1))
+    frame["HQM"] = frame["HQM_Score"].round(1)
+    frame["Price"] = frame["Price"].round(2)
+    for col in ["Return_1M", "Return_3M", "Return_6M", "Return_1Y"]:
+        frame[col] = frame[col] * 100
+    frame["Chart"] = frame.apply(
+        lambda row: f"https://www.tradingview.com/chart/?symbol={row['Exchange']}%3A{row['Ticker']}", axis=1
+    )
+    display = frame[["Rank", "Ticker", "Price", "HQM", "Return_1M", "Return_3M", "Return_6M", "Return_1Y", "Chart"]]
+    st.dataframe(
+        display,
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "Rank": st.column_config.NumberColumn("#", format="%d"),
+            "Ticker": st.column_config.TextColumn("Ticker"),
+            "Price": st.column_config.NumberColumn("Price", format="$%.2f"),
+            "HQM": st.column_config.ProgressColumn("HQM score", min_value=0, max_value=100, format="%.1f"),
+            "Return_1M": st.column_config.NumberColumn("1M", format="%+.1f%%"),
+            "Return_3M": st.column_config.NumberColumn("3M", format="%+.1f%%"),
+            "Return_6M": st.column_config.NumberColumn("6M", format="%+.1f%%"),
+            "Return_1Y": st.column_config.NumberColumn("1Y", format="%+.1f%%"),
+            "Chart": st.column_config.LinkColumn("Chart", display_text="View ↗"),
+        },
+    )
+    st.caption("Ranked by average percentile across 1M, 3M, 6M, and 1Y returns. Percentiles use the full cached universe.")
 
 
 # Check for data
@@ -138,6 +179,8 @@ with tab_sectors:
         hide_index=True,
         use_container_width=True,
     )
+
+    render_top_ranked("sector", sorted(df_breakdown['Sector'].dropna().unique().tolist()), "Sector")
 
     # HQM Scores by Sector
     if sector_hqm:
@@ -277,6 +320,8 @@ with tab_industries:
         hide_index=True,
         use_container_width=True,
     )
+
+    render_top_ranked("industry", sorted(df_ind_breakdown['Industry'].dropna().unique().tolist()), "Industry")
 
     # HQM Scores by Industry
     if industry_hqm:

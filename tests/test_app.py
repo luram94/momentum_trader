@@ -108,3 +108,12 @@ def test_refresh_marks_existing_scan_outdated(app_db, monkeypatch):
     at.run()
     assert not at.exception
     assert any('Market data has changed' in w.value for w in at.warning)
+
+
+def test_group_leaders_use_full_universe_percentile_ranking(app_db):
+    _seed_stocks(app_db, count=12)
+    leaders = database.get_top_stocks_by_group('sector', 'Tech', limit=5)
+    assert len(leaders) == 5
+    assert all(row['Sector'] == 'Tech' for row in leaders)
+    assert all(leaders[i]['HQM_Score'] >= leaders[i + 1]['HQM_Score'] for i in range(4))
+    assert leaders[0]['Ticker'] == 'T10'
