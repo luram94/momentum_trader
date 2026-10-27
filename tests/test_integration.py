@@ -3,7 +3,7 @@ Integration tests for the real scan and backtest paths.
 
 These import the actual application modules and drive their full pipelines
 against a temporary SQLite database, with only the external network calls
-(FinViz screeners, yfinance downloads) replaced by shaped fakes.
+(Yahoo screener and price downloads) replaced by shaped fakes.
 """
 
 import sqlite3
@@ -45,84 +45,210 @@ def _seed_stocks(db_path, count=40):
 
 
 # =============================================================================
-# Refresh pipeline (fetch_and_store_data with faked FinViz screeners)
+# Refresh pipeline (fetch_and_store_data with faked Yahoo screener/downloads)
 # =============================================================================
 
-class _FakeScreener:
-    def __init__(self, frame):
-        self._frame = frame
-
-    def set_filter(self, filters_dict):
-        self.filters = filters_dict
-
-    def screener_view(self, limit=-1, verbose=0, columns=None, sleep_sec=1):
-        return self._frame.copy()
+# Small stand-in for yfinance's sector -> industries map
+_INDUSTRY_MAP = {
+    'Technology': {'Software—Infrastructure'},
+    'Healthcare': {'Biotechnology'},
+    'Financial Services': {'Banks - Regional'},
+}
 
 
-def _custom_frame(**overrides):
-    """Shaped like the FinViz Custom view with the columns the app requests."""
-    frame = pd.DataFrame({
-        'Ticker': ['MSFT', 'BIIB'],
-        'Sector': ['Technology', 'Healthcare'],
-        'Industry': ['Software', 'Biotech'],
-        'Market Cap': [5e9, 8e9],
-        'Perf Month': [0.05, 0.02],
-        'Perf Quart': [0.15, 0.08],
-        'Perf Half': [0.30, 0.12],
-        'Perf Year': [0.60, 0.25],
-        'Avg Volume': [2_500_000.0, 1_100_000.0],
-        'Price': [50.0, 120.0],
-        'Volume': [400_000.0, 900_000.0],
-    })
-    for column, values in overrides.items():
-        if values is None:
-            frame = frame.drop(columns=column)
-        else:
-            frame[column] = values
-    return frame
+class _FakeQuery:
+    """Records EquityQuery operands so the fake screener can read them."""
+
+    def __init__(self, operator, operands):
+        self.operator = operator
+        self.operands = operands
+
+    def industry(self):
+        for operand in self.operands:
+            if isinstance(operand, _FakeQuery) and operand.operands[0] == 'industry':
+                return operand.operands[1]
+        return None
+
+
+def _quote(symbol, exchange='NMS', **overrides):
+    quote = {
+        'symbol': symbol,
+        'exchange': exchange,
+        'marketCap': 5e9,
+        'regularMarketPrice': 50.0,
+        'regularMarketVolume': 400_000,
+        'averageDailyVolume3Month': 2_500_000,
+    }
+    quote.update(overrides)
+    return quote
+
+
+_DEFAULT_QUOTES = {
+    'Software—Infrastructure': [_quote('MSFT')],
+    'Biotechnology': [_quote('BIIB', averageDailyVolume3Month=1_100_000)],
+    'Banks - Regional': [_quote('JPM', exchange='NYQ')],
+}
+
+
+def _fake_screen(quotes_by_industry, calls=None):
+    def screen(query, size=25, offset=0, **kwargs):
+        industry = query.industry()
+        if calls is not None:
+            calls.append((industry, offset))
+        quotes = quotes_by_industry.get(industry, [])
+        return {'quotes': quotes[offset:offset + size], 'total': len(quotes)}
+    return screen
+
+
+def _closes(tickers, start=100.0, end=200.0):
+    """13 months of business-day closes rising linearly from start to end."""
+    index = pd.bdate_range(end='2026-10-23', periods=280)
+    prices = np.linspace(start, end, len(index))
+    return pd.DataFrame({t: prices for t in tickers}, index=index)
+
+
+def _fake_download(closes):
+    def download(tickers, **kwargs):
+        frame = closes[[t for t in tickers if t in closes.columns]]
+        return pd.concat({'Close': frame}, axis=1)
+    return download
+
+
+@pytest.fixture
+def fake_yahoo(monkeypatch):
+    """Fake Yahoo endpoints; returns a setter to override screener/prices."""
+    monkeypatch.setattr(database, 'EquityQuery', _FakeQuery)
+    monkeypatch.setattr(database, 'EQUITY_SCREENER_EQ_MAP', {'industry': _INDUSTRY_MAP})
+
+    def install(quotes=None, closes=None, calls=None):
+        quotes = _DEFAULT_QUOTES if quotes is None else quotes
+        closes = _closes(['MSFT', 'BIIB', 'JPM']) if closes is None else closes
+        monkeypatch.setattr(database.yf, 'screen', _fake_screen(quotes, calls))
+        monkeypatch.setattr(database.yf, 'download', _fake_download(closes))
+
+    install()
+    return install
+
+
+def _stored(db_path):
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    rows = {r['ticker']: dict(r) for r in conn.execute('SELECT * FROM stocks')}
+    conn.close()
+    return rows
 
 
 class TestRefreshPipeline:
-    def test_fetch_and_store_stores_real_avg_volume(self, temp_db, monkeypatch):
-        monkeypatch.setattr(database, 'Custom', lambda: _FakeScreener(_custom_frame()))
-
+    def test_stores_screened_universe_with_computed_returns(self, temp_db, fake_yahoo):
         stats = database.fetch_and_store_data()
 
-        assert stats['total_stored'] == 2
-        conn = sqlite3.connect(temp_db)
-        rows = dict(conn.execute('SELECT ticker, avg_volume FROM stocks').fetchall())
-        conn.close()
+        assert stats['total_stored'] == 3
+        assert stats['nyse_count'] == 1 and stats['nasdaq_count'] == 2
+        rows = _stored(temp_db)
+        assert rows['MSFT']['exchange'] == 'NASDAQ'
+        assert rows['JPM']['exchange'] == 'NYSE'
+        # Yahoo's em-dash industry names are stored in FinViz's spelling
+        assert rows['MSFT']['industry'] == 'Software - Infrastructure'
+        # FinViz's sector name is kept so stored history lines up
+        assert rows['JPM']['sector'] == 'Financial'
         # Real average volume, not the daily volume
-        assert rows['MSFT'] == 2_500_000.0
-        assert rows['BIIB'] == 1_100_000.0
-        assert database.get_stock_count() == 2
+        assert rows['MSFT']['avg_volume'] == 2_500_000
+        assert rows['BIIB']['avg_volume'] == 1_100_000
+        # Linear 100 -> 200 rise: every window is positive, longer is larger
+        msft = rows['MSFT']
+        assert 0 < msft['return_1m'] < msft['return_3m'] < msft['return_6m'] < msft['return_1y']
         assert database.get_data_age_hours() < 0.1
 
-    def test_missing_avg_volume_column_degrades_to_null(self, temp_db, monkeypatch):
-        # FinViz layout change: no 'Avg Volume' column -- refresh must not crash
-        frame = _custom_frame(**{'Avg Volume': None})
-        monkeypatch.setattr(database, 'Custom', lambda: _FakeScreener(frame))
+    def test_pages_through_large_industries(self, temp_db, fake_yahoo, monkeypatch):
+        monkeypatch.setattr(database, '_SCREEN_PAGE_SIZE', 1)
+        tickers = ['AAA', 'BBB', 'CCC']
+        calls = []
+        fake_yahoo(
+            quotes={'Software—Infrastructure': [_quote(t) for t in tickers]},
+            closes=_closes(tickers),
+            calls=calls,
+        )
+
+        stats = database.fetch_and_store_data()
+
+        assert stats['total_stored'] == 3
+        assert ('Software—Infrastructure', 2) in calls
+
+    def test_missing_avg_volume_degrades_to_null(self, temp_db, fake_yahoo):
+        quote = _quote('MSFT')
+        del quote['averageDailyVolume3Month']
+        fake_yahoo(quotes={'Software—Infrastructure': [quote]})
+
+        database.fetch_and_store_data()
+
+        assert _stored(temp_db)['MSFT']['avg_volume'] is None
+
+    def test_short_history_is_dropped(self, temp_db, fake_yahoo):
+        # A recent IPO has no close a year back, so no 1Y return
+        closes = _closes(['MSFT', 'BIIB', 'JPM'])
+        closes.loc[:closes.index[-100], 'BIIB'] = np.nan
+        fake_yahoo(closes=closes)
 
         stats = database.fetch_and_store_data()
 
         assert stats['total_stored'] == 2
-        conn = sqlite3.connect(temp_db)
-        avg = conn.execute('SELECT avg_volume FROM stocks').fetchone()[0]
-        conn.close()
-        assert avg is None  # NULL, never the daily volume in disguise
+        assert 'BIIB' not in _stored(temp_db)
 
-    def test_all_returns_missing_keeps_existing_data(self, temp_db, monkeypatch):
+    def test_screener_error_keeps_existing_data(self, temp_db, fake_yahoo, monkeypatch):
         _seed_stocks(temp_db, count=3)
         before = database.get_stock_count()
-        # FinViz layout change: a return column vanishes entirely -- the
-        # refresh must fail loudly instead of committing an emptied table
-        frame = _custom_frame(**{'Perf Year': [None, None]})
-        monkeypatch.setattr(database, 'Custom', lambda: _FakeScreener(frame))
+
+        def blocked(*args, **kwargs):
+            raise ConnectionError('429 Too Many Requests')
+        monkeypatch.setattr(database.yf, 'screen', blocked)
+
+        with pytest.raises(RuntimeError, match='screener failed'):
+            database.fetch_and_store_data()
+
+        assert database.get_stock_count() == before
+
+    def test_empty_screen_keeps_existing_data(self, temp_db, fake_yahoo):
+        _seed_stocks(temp_db, count=3)
+        before = database.get_stock_count()
+        fake_yahoo(quotes={})
+
+        with pytest.raises(RuntimeError, match='returned no stocks'):
+            database.fetch_and_store_data()
+
+        assert database.get_stock_count() == before
+
+    def test_failed_downloads_keep_existing_data(self, temp_db, fake_yahoo):
+        _seed_stocks(temp_db, count=3)
+        before = database.get_stock_count()
+        # Price history unavailable for every ticker -- the refresh must
+        # fail loudly instead of committing an emptied table
+        fake_yahoo(closes=_closes([]))
 
         with pytest.raises(RuntimeError, match='no stocks with complete return data'):
             database.fetch_and_store_data()
 
         assert database.get_stock_count() == before
+
+
+class TestCalculateReturns:
+    def test_uses_calendar_month_look_backs(self):
+        index = pd.date_range('2025-01-01', '2026-01-01', freq='D')
+        closes = pd.DataFrame({'X': np.arange(len(index), dtype=float) + 100}, index=index)
+
+        returns = database._calculate_returns(closes).loc['X']
+
+        last = closes['X'].iloc[-1]
+        assert returns['Return_1M'] == pytest.approx(last / closes.loc['2025-12-01', 'X'] - 1)
+        assert returns['Return_1Y'] == pytest.approx(last / closes.loc['2025-01-01', 'X'] - 1)
+
+    def test_history_shorter_than_window_is_nan(self):
+        index = pd.date_range('2025-10-01', '2026-01-01', freq='D')
+        closes = pd.DataFrame({'X': 100.0}, index=index)
+
+        returns = database._calculate_returns(closes).loc['X']
+
+        assert returns['Return_3M'] == pytest.approx(0.0)
+        assert np.isnan(returns['Return_6M']) and np.isnan(returns['Return_1Y'])
 
 
 # =============================================================================

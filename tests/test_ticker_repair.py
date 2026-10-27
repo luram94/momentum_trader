@@ -1,23 +1,13 @@
 """
-Tests for the FinViz ticker parsing patch, the scrape sanity guard, and the
-repair that heals data written while the scrape was broken.
-
-FinViz's screener renders a logo-placeholder initial inside the Ticker cell,
-which finvizfinance's ``col.text`` parse concatenates onto the symbol
-(ABNB -> AABNB). These tests drive the patched parser with the real markup.
+Tests for the repair that heals history written while the old FinViz scrape
+was doubling the first letter of every ticker (ABNB -> AABNB).
 """
 
 import sqlite3
 
-from bs4 import BeautifulSoup
-from finvizfinance.screener.base import Base
-import pandas as pd
 import pytest
 
 import hqm.database as database
-from hqm.finviz_patch import apply_ticker_parsing_fix
-
-apply_ticker_parsing_fix()
 
 
 @pytest.fixture
@@ -26,118 +16,6 @@ def temp_db(tmp_path, monkeypatch):
     db_path = tmp_path / 'test_hqm.db'
     monkeypatch.setattr(database, 'DB_PATH', db_path)
     return db_path
-
-
-HEADERS = ['Ticker', 'Sector', 'Price']
-
-
-def _row(ticker: str, sector: str, price: str, *, logo: bool = True,
-         boxover: bool = True, index_cell: bool = True) -> str:
-    """Build a screener row matching FinViz's live markup."""
-    attr = f' data-boxover-ticker="{ticker}"' if boxover else ''
-    placeholder = (
-        f'<a class="company-ticker"><img src="{ticker}.svg"/>'
-        f'<span>{ticker[0]}</span></a>'
-        if logo else ''
-    )
-    leading = '<td>1</td>' if index_cell else ''
-    return (
-        f'<tr>{leading}'
-        f'<td{attr}><span>{placeholder}'
-        f'<a class="tab-link">{ticker}</a></span></td>'
-        f'<td>{sector}</td><td>{price}</td></tr>'
-    )
-
-
-def _parse(rows_html: str) -> pd.DataFrame:
-    """Run the patched parser over a screener table."""
-    header = '<tr><th>No.</th><th>Ticker</th><th>Sector</th><th>Price</th></tr>'
-    soup = BeautifulSoup(
-        f'<table class="screener_table">{header}{rows_html}</table>',
-        'html.parser',
-    )
-    rows = soup.find('table').find_all('tr')
-    df = pd.DataFrame([], columns=HEADERS)
-    return Base._get_table(
-        Base.__new__(Base), rows, df, [HEADERS.index('Price')], HEADERS, -1
-    )
-
-
-class TestTickerParsing:
-    """The placeholder initial must never reach the parsed symbol."""
-
-    def test_strips_logo_placeholder_initial(self):
-        df = _parse(_row('ABNB', 'Consumer Cyclical', '146.01'))
-        assert df['Ticker'].tolist() == ['ABNB']
-
-    def test_handles_symbols_that_legitimately_repeat_a_letter(self):
-        # AA and AAPL are real symbols; a "strip the first char" fix would be
-        # indistinguishable from corruption here, an attribute read is not.
-        html = ''.join([
-            _row('AA', 'Basic Materials', '38.64'),
-            _row('AAPL', 'Technology', '336.26'),
-            _row('SLS', 'Healthcare', '13.05'),
-        ])
-        df = _parse(html)
-        assert df['Ticker'].tolist() == ['AA', 'AAPL', 'SLS']
-
-    def test_correct_without_the_placeholder(self):
-        # If FinViz reverts the markup the patch must be a no-op, not a
-        # second source of corruption.
-        df = _parse(_row('SLS', 'Healthcare', '13.05', logo=False))
-        assert df['Ticker'].tolist() == ['SLS']
-
-    def test_falls_back_to_tab_link_without_boxover_attribute(self):
-        df = _parse(_row('MSFT', 'Technology', '410.00', boxover=False))
-        assert df['Ticker'].tolist() == ['MSFT']
-
-    def test_other_columns_are_untouched(self):
-        df = _parse(_row('ABNB', 'Consumer Cyclical', '146.01'))
-        assert df['Sector'].tolist() == ['Consumer Cyclical']
-        assert df['Price'].tolist() == [146.01]
-
-    def test_appends_to_an_existing_frame_across_pages(self):
-        # screener_view accumulates page by page; the repair must land on the
-        # rows just parsed, not on the whole frame.
-        first = _parse(_row('SLS', 'Healthcare', '13.05'))
-        rows = BeautifulSoup(
-            '<table class="screener_table">'
-            '<tr><th>No.</th><th>Ticker</th><th>Sector</th><th>Price</th></tr>'
-            + _row('EE', 'Energy', '38.64')
-            + '</table>',
-            'html.parser',
-        ).find('table').find_all('tr')
-        combined = Base._get_table(
-            Base.__new__(Base), rows, first,
-            [HEADERS.index('Price')], HEADERS, -1
-        )
-        assert combined['Ticker'].tolist() == ['SLS', 'EE']
-
-    def test_survives_a_cell_without_either_marker(self):
-        html = (
-            '<tr><td>1</td><td>ZZZ</td>'
-            '<td>Technology</td><td>1.00</td></tr>'
-        )
-        df = _parse(html)
-        assert df['Ticker'].tolist() == ['ZZZ']
-
-
-class TestScrapeSanityGuard:
-    """A systematically doubled scrape must not overwrite good data."""
-
-    def test_rejects_a_fully_doubled_scrape(self):
-        bad = pd.Series(['AAAPL', 'AABNB', 'SSLS', 'TTSLA'])
-        with pytest.raises(RuntimeError, match='doubled letter'):
-            database._assert_tickers_look_sane(bad)
-
-    def test_accepts_a_real_universe(self):
-        # Real screens carry a few percent of genuine doubles
-        real = pd.Series(['AAPL', 'AA', 'TTWO', 'SLS', 'MSFT', 'EE', 'NVDA',
-                          'AMZN', 'GOOG', 'META'])
-        database._assert_tickers_look_sane(real)
-
-    def test_ignores_an_empty_column(self):
-        database._assert_tickers_look_sane(pd.Series([], dtype=object))
 
 
 class TestTickerRepair:

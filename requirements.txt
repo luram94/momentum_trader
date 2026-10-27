@@ -2,14 +2,13 @@
 # (touching this file forces Streamlit Cloud to reprocess dependencies and
 # restart the app process, which a plain code push does not do when the
 # previous process has crashed or holds stale module imports)
-# UI release: 2026-09-06 (research workspace redesign + sector leaders restart)
+# Data source: 2026-10-27 (Yahoo Finance screener replaces FinViz)
 numpy>=1.21.0
 pandas>=1.3.0
 scipy>=1.7.0
 
 # Data sources
-finvizfinance>=0.14.0
-yfinance>=0.2.0
+yfinance>=1.0
 
 # Web framework (Streamlit)
 streamlit>=1.36.0,<2

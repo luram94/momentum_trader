@@ -23,7 +23,7 @@ Core code lives in the `hqm/` package (`hqm/database.py`, `hqm/backtest.py`,
 
 ## Driving the app (no browser available)
 Use Streamlit's official AppTest harness — it executes the real page scripts
-end-to-end (real SQLite DB, real yfinance/FinViz network calls):
+end-to-end (real SQLite DB, real Yahoo Finance network calls):
 
 ```python
 import os, sys
@@ -37,7 +37,7 @@ from streamlit.testing.v1 import AppTest
 at = AppTest.from_file('pages/1_Scanner.py', default_timeout=900)
 at.run()
 buttons = {b.label: b for b in at.button}
-buttons['Run Scan'].click()   # or 'Refresh Data' first (real FinViz, ~70s)
+buttons['Run Scan'].click()   # or 'Refresh Data' first (real Yahoo, ~4.5 min)
 at.run()
 # inspect: at.metric (label/value), at.warning, at.error, at.dataframe[0].value,
 # at.exception
@@ -59,14 +59,17 @@ Image has runtime deps only — no pytest inside the container.
 - `data/hqm_data.db` schema does NOT migrate for user tables; scan/data tables
   are dropped+rebuilt by `_migrate_schema`. If a page crashes with "no such
   column", back up the file, let `init_database()` rebuild, then Refresh Data.
-- Data refresh (since PR #9) uses ONE FinViz Custom screen per exchange
-  (`_CUSTOM_SCREENER_COLUMNS` in `hqm/database.py`). `limit=100000` is
-  REQUIRED — Custom's default limit=-1 stops pagination after one 20-row page;
-  a full-universe refresh stores ~2,000 stocks, so if you see ~40, that broke.
-  Page sleep is `rate_limits.finviz_sleep_sec` in config.yaml (0.3s; raise it
-  if FinViz starts rate-limiting). Full refresh ≈ 70s.
+- Data refresh uses Yahoo Finance only (FinViz was dropped in Oct 2026 after
+  it started blocking scripted requests). `_screen_universe` runs one
+  `yf.screen` per industry (145 queries, ~15s) — the query is what assigns
+  sector/industry, since Yahoo quotes carry neither. `_download_returns` then
+  pulls 13 months of closes in `yfinance_batch_size` batches with
+  threads=False (~4 min) and computes calendar-month returns. A full refresh
+  stores ~2,030 stocks in ≈ 4.5 min; if you see a few hundred, a page or an
+  industry query broke. Sector/industry names are mapped to FinViz spelling
+  ('Financial', 'Banks - Regional') so stored history lines up.
 - A refresh that would store 0 stocks raises RuntimeError and keeps existing
-  rows — intentional guard against FinViz layout changes, don't "fix" it.
+  rows — intentional guard against Yahoo outages/rate limits, don't "fix" it.
 - Scan filters (RSI/SMA/ATR) default OFF in session state; a plain Run Scan
   exercises HQM scoring + indicators + risk metrics.
 - Degraded-path probe: monkeypatch `hqm.risk_metrics.get_historical_prices` to

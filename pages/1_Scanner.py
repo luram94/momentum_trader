@@ -60,7 +60,7 @@ def scan_settings():
 
 
 def refresh_data():
-    """Refresh market data from FinViz."""
+    """Refresh market data from Yahoo Finance."""
     progress_bar = st.progress(0)
     status_text = st.empty()
 
@@ -485,14 +485,14 @@ else:
     # No results yet
     empty_workspace("Find your next research shortlist", "Set your portfolio size and filters in the sidebar, then run a scan. HQM ranks stocks on consistent strength across four timeframes.")
     workflow_steps([
-        ("Start with the universe", "Refresh the FinViz snapshot to load prices and returns for eligible stocks."),
+        ("Start with the universe", "Refresh the market snapshot to load prices and returns for eligible stocks."),
         ("Define your selection", "Choose position sizing, then expand technical or sector filters to refine the search."),
         ("Compare the evidence", "Review scores, return windows, and allocation. Export the shortlist for further research."),
     ])
 
     # Show data status
     if get_stock_count() == 0:
-        st.warning("No market data available. Click 'Refresh Data' in the sidebar to load data from FinViz.")
+        st.warning("No market data available. Click 'Refresh Data' in the sidebar to load data from Yahoo Finance.")
     else:
         st.success(f"Ready to scan {get_stock_count():,} stocks.")
 
