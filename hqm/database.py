@@ -21,14 +21,11 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 from scipy.stats import percentileofscore
-from finvizfinance.screener.custom import Custom
+from yfinance import EquityQuery
+from yfinance.const import EQUITY_SCREENER_EQ_MAP
 
 from hqm.logger import get_logger
 from hqm.config_loader import get_config, PROJECT_ROOT
-from hqm.finviz_patch import apply_ticker_parsing_fix
-
-# FinViz's logo placeholder otherwise doubles the first letter of every symbol
-apply_ticker_parsing_fix()
 
 # Initialize logger
 logger = get_logger('database')
@@ -363,38 +360,6 @@ _TICKER_REFERENCE_TABLES: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     ('scan_positions', ()),
 )
 
-# A real universe has a few percent of symbols that genuinely start with a
-# doubled letter (AA, AAPL, TTWO...). Anything past this means the scrape
-# itself is broken, not the market.
-_MAX_DOUBLED_FIRST_LETTER_SHARE = 0.5
-
-
-def _assert_tickers_look_sane(tickers: pd.Series) -> None:
-    """
-    Reject an obviously corrupted scrape before it replaces good data.
-
-    FinViz's logo placeholder once leaked into every symbol (ABNB -> AABNB)
-    and the refresh stored the lot without complaint. See hqm/finviz_patch.py.
-
-    Args:
-        tickers: Ticker column from the freshly scraped screener.
-
-    Raises:
-        RuntimeError: If the symbols look systematically malformed.
-    """
-    symbols = [str(t) for t in tickers if isinstance(t, str) and t]
-    if not symbols:
-        return
-
-    doubled = [s for s in symbols if len(s) > 1 and s[0] == s[1]]
-    share = len(doubled) / len(symbols)
-    if share > _MAX_DOUBLED_FIRST_LETTER_SHARE:
-        raise RuntimeError(
-            f'{share:.0%} of scraped tickers start with a doubled letter '
-            f'(e.g. {", ".join(doubled[:5])}); FinViz markup has probably '
-            f'changed again. Keeping existing database contents'
-        )
-
 
 def _repair_doubled_tickers(conn: sqlite3.Connection) -> int:
     """
@@ -448,17 +413,158 @@ def _repair_doubled_tickers(conn: sqlite3.Connection) -> int:
     return repaired
 
 
-# FinViz Custom-view column ids (finvizfinance.constants.CUSTOM_SCREENER_COLUMNS):
-# 1=Ticker, 3=Sector, 4=Industry, 6=Market Cap, 43/44/45/46=Perf Month/
-# Quarter/Half Year/Year, 63=Average Volume, 65=Price, 67=Volume
-_CUSTOM_SCREENER_COLUMNS = [1, 3, 4, 6, 43, 44, 45, 46, 63, 65, 67]
+# Yahoo screener exchange codes for each exchange name stored in `stocks`
+_YAHOO_EXCHANGE_CODES = {
+    'NYSE': ('NYQ',),
+    'NASDAQ': ('NMS', 'NGM', 'NCM'),
+}
+
+# Yahoo and FinViz share the industry taxonomy but name one sector
+# differently and join industry parts with an em dash ('Banks—Regional');
+# store the FinViz spelling so stored history and filters line up.
+_YAHOO_SECTOR_NAMES = {'Financial Services': 'Financial'}
+
+
+def _finviz_industry_name(industry: str) -> str:
+    """'Banks—Regional' -> 'Banks - Regional'."""
+    return industry.replace('—', ' - ')
+
+
+# yf.screen returns at most 250 quotes per request
+_SCREEN_PAGE_SIZE = 250
+
+# Return column -> look-back in calendar months
+_RETURN_MONTHS = {'Return_1M': 1, 'Return_3M': 3, 'Return_6M': 6, 'Return_1Y': 12}
+
+
+def _screen_universe(update_progress: Callable[[int, str], None]) -> pd.DataFrame:
+    """
+    List every stock in the configured exchanges and market-cap band.
+
+    Screens one industry at a time: Yahoo's quotes carry no sector or
+    industry, so the query that found a stock is what classifies it.
+
+    Returns:
+        One row per ticker with Ticker, Exchange, Sector, Industry,
+        Market_Cap, Price, Volume and Avg_Volume.
+    """
+    code_to_exchange = {
+        code: exchange
+        for exchange in config.data.exchanges
+        for code in _YAHOO_EXCHANGE_CODES[exchange]
+    }
+    base_query = [
+        EquityQuery('eq', ['region', 'us']),
+        EquityQuery('is-in', ['exchange', *code_to_exchange]),
+        EquityQuery('gte', ['intradaymarketcap', config.data.min_market_cap_usd]),
+    ]
+    industries = [
+        (sector, industry)
+        for sector, names in EQUITY_SCREENER_EQ_MAP['industry'].items()
+        for industry in sorted(names)
+    ]
+
+    rows: List[Dict[str, Any]] = []
+    for i, (sector, industry) in enumerate(industries):
+        update_progress(5 + 20 * i // len(industries), f'Screening {industry}...')
+        query = EquityQuery('and', base_query + [EquityQuery('eq', ['industry', industry])])
+        offset = 0
+        while True:
+            result = yf.screen(query, size=_SCREEN_PAGE_SIZE, offset=offset)
+            quotes = result.get('quotes', [])
+            for quote in quotes:
+                rows.append({
+                    'Ticker': quote['symbol'],
+                    'Exchange': code_to_exchange.get(quote.get('exchange')),
+                    'Sector': _YAHOO_SECTOR_NAMES.get(sector, sector),
+                    'Industry': _finviz_industry_name(industry),
+                    'Market_Cap': quote.get('marketCap'),
+                    'Price': quote.get('regularMarketPrice'),
+                    'Volume': quote.get('regularMarketVolume'),
+                    'Avg_Volume': quote.get('averageDailyVolume3Month'),
+                })
+            offset += len(quotes)
+            if not quotes or offset >= result.get('total', 0):
+                break
+
+    universe = pd.DataFrame(rows, columns=[
+        'Ticker', 'Exchange', 'Sector', 'Industry',
+        'Market_Cap', 'Price', 'Volume', 'Avg_Volume',
+    ])
+    return universe.drop_duplicates(subset='Ticker', keep='first')
+
+
+def _calculate_returns(closes: pd.DataFrame) -> pd.DataFrame:
+    """
+    Trailing returns per ticker from a frame of daily closes.
+
+    Args:
+        closes: Daily closes, one column per ticker.
+
+    Returns:
+        One row per ticker with a column per _RETURN_MONTHS window; NaN where
+        the history does not reach back that far.
+    """
+    closes = closes.ffill()
+    last_date = closes.index[-1]
+    latest = closes.iloc[-1]
+    returns = {}
+    for column, months in _RETURN_MONTHS.items():
+        before = closes.loc[:last_date - pd.DateOffset(months=months)]
+        if before.empty:
+            returns[column] = pd.Series(np.nan, index=closes.columns)
+        else:
+            returns[column] = latest / before.iloc[-1] - 1
+    return pd.DataFrame(returns)
+
+
+def _download_returns(
+    tickers: List[str], update_progress: Callable[[int, str], None]
+) -> pd.DataFrame:
+    """
+    Download a year of daily closes and compute the trailing returns.
+
+    Returns:
+        Ticker column plus one column per _RETURN_MONTHS window.
+    """
+    batch_size = config.rate_limits.yfinance_batch_size
+    frames: List[pd.DataFrame] = []
+
+    for i in range(0, len(tickers), batch_size):
+        batch = tickers[i:i + batch_size]
+        update_progress(
+            25 + 55 * i // len(tickers),
+            f'Downloading price history ({i:,}/{len(tickers):,})...'
+        )
+        try:
+            # 13 months so the 1Y look-back has a close on or before it.
+            # threads=False: threaded downloads segfault the Streamlit Cloud
+            # runtime (Python 3.14 + yfinance's curl backend)
+            data = yf.download(batch, period='13mo', progress=False,
+                               threads=False, auto_adjust=True)
+        except Exception as e:
+            logger.warning(f"Error downloading price history for batch: {e}")
+            continue
+        if data.empty:
+            continue
+
+        if isinstance(data.columns, pd.MultiIndex):
+            closes = data['Close']
+        else:
+            closes = data[['Close']].set_axis(batch[:1], axis=1)
+        frames.append(_calculate_returns(closes))
+
+    if not frames:
+        return pd.DataFrame(columns=['Ticker', *_RETURN_MONTHS])
+    returns = pd.concat(frames)
+    return returns.rename_axis('Ticker').reset_index()
 
 
 def fetch_and_store_data(
     progress_callback: Optional[Callable[[int, str], None]] = None
 ) -> Dict[str, Any]:
     """
-    Fetch fresh data from FinViz and store in database.
+    Fetch fresh data from Yahoo Finance and store in database.
 
     Args:
         progress_callback: Optional function(progress, message) for UI updates
@@ -483,80 +589,40 @@ def fetch_and_store_data(
             progress_callback(pct, msg)
         logger.debug(f"Progress {pct}%: {msg}")
 
-    update_progress(5, 'Connecting to FinViz...')
+    update_progress(5, 'Connecting to Yahoo Finance...')
 
-    exchanges = config.data.exchanges
-    all_data: List[pd.DataFrame] = []
+    try:
+        universe = _screen_universe(update_progress)
+    except Exception as e:
+        logger.error(f"Error screening the universe: {e}")
+        raise RuntimeError(
+            f'Yahoo Finance screener failed ({e}); keeping existing database '
+            'contents. Try again in a few minutes.'
+        ) from e
+    if universe.empty:
+        raise RuntimeError(
+            'Yahoo Finance returned no stocks (likely rate-limited); keeping '
+            'existing database contents. Try again in a few minutes.'
+        )
+    logger.info(f"Screened {len(universe)} stocks")
 
-    for i, exchange in enumerate(exchanges):
-        update_progress(10 + (i * 35), f'Fetching {exchange} data...')
-        logger.info(f"Fetching data for {exchange}")
-
-        try:
-            filters = {'Exchange': exchange, 'Market Cap.': config.data.min_market_cap}
-
-            # Single Custom screen with exactly the columns we need. FinViz
-            # serves 20 rows per page, so one screen instead of the old
-            # Overview + Performance pair halves the page requests.
-            screener = Custom()
-            screener.set_filter(filters_dict=filters)
-            df_merged = screener.screener_view(
-                # Custom's default limit=-1 stops the page loop after one
-                # page; pass the same effectively-unlimited value Overview uses
-                limit=100000,
-                verbose=0,
-                columns=_CUSTOM_SCREENER_COLUMNS,
-                sleep_sec=config.rate_limits.finviz_sleep_sec,
-            )
-
-            rename = {
-                'Perf Month': 'Return_1M',
-                'Perf Quart': 'Return_3M',
-                'Perf Half': 'Return_6M',
-                'Perf Year': 'Return_1Y',
-                'Avg Volume': 'Avg_Volume',
-                'Market Cap': 'Market_Cap',
-            }
-            # If FinViz drops an optional column (Avg Volume), rows store
-            # NULL for it; a missing required column fails loudly below,
-            # before the old data is deleted.
-            missing = [c for c in rename if c not in df_merged.columns]
-            if missing:
-                logger.warning(f"Custom view missing columns {missing}")
-            df_merged = df_merged.rename(columns=rename)
-            df_merged['Exchange'] = exchange
-
-            all_data.append(df_merged)
-
-            if exchange == 'NYSE':
-                stats['nyse_count'] = len(df_merged)
-            else:
-                stats['nasdaq_count'] = len(df_merged)
-
-            logger.info(f"Fetched {len(df_merged)} stocks from {exchange}")
-
-        except Exception as e:
-            logger.error(f"Error fetching {exchange}: {e}")
-            raise
+    returns = _download_returns(universe['Ticker'].tolist(), update_progress)
 
     update_progress(80, 'Storing data in database...')
 
-    # Combine and deduplicate
-    combined_df = pd.concat(all_data, ignore_index=True)
-    df = combined_df.drop_duplicates(subset='Ticker', keep='first')
+    df = universe.merge(returns, on='Ticker', how='inner')
+    stats['nyse_count'] = int((df['Exchange'] == 'NYSE').sum())
+    stats['nasdaq_count'] = int((df['Exchange'] == 'NASDAQ').sum())
 
     # Remove rows with missing return data
-    return_columns = ['Return_1M', 'Return_3M', 'Return_6M', 'Return_1Y']
+    return_columns = list(_RETURN_MONTHS)
     df = df.dropna(subset=return_columns)
 
     if df.empty:
         raise RuntimeError(
-            'FinViz returned no stocks with complete return data; '
+            'Yahoo Finance returned no stocks with complete return data; '
             'keeping existing database contents'
         )
-
-    # Fail before the DELETE below, while the old data is still intact
-    _assert_tickers_look_sane(df['Ticker'])
 
     # Store in database
     conn = get_connection()
@@ -580,9 +646,9 @@ def fetch_and_store_data(
             row.get('Industry', ''),
             row['Market_Cap'],
             row['Price'],
-            row.get('Volume', 0),
-            # Real average volume from the Performance view. NULL when
-            # unavailable -- never the single-day volume in disguise.
+            _null_if_nan(row.get('Volume')),
+            # Yahoo's 3-month average volume. NULL when unavailable --
+            # never the single-day volume in disguise.
             _null_if_nan(row.get('Avg_Volume')),
             row['Return_1M'],
             row['Return_3M'],
@@ -592,7 +658,8 @@ def fetch_and_store_data(
         ))
 
     # The fresh universe is the reference that makes this decidable, so heal
-    # any history written while the scrape was doubling first letters.
+    # any history written while the old FinViz scrape was doubling first
+    # letters.
     stats['tickers_repaired'] = _repair_doubled_tickers(conn)
 
     conn.commit()

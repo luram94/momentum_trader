@@ -53,7 +53,7 @@ def main():
         st.caption(f"Universe: {count:,} stocks · {status}")
         if refreshed:
             st.caption(f"Snapshot {refreshed:%d %b %Y, %H:%M} (server time)")
-        st.caption("FinViz / Universe & returns\n\nYahoo Finance / Price history")
+        st.caption("Yahoo Finance / Universe, returns & price history")
     if count and status != "Fresh":
         st.warning("Refresh the universe in Scanner before researching current setups. This snapshot is out of date or its age is unknown.")
     section_heading("Where strength is building", "01 / Sector intelligence")

@@ -59,7 +59,7 @@ By requiring consistency across all timeframes, the strategy filters out stocks 
 |-------|-----------|
 | Frontend | Streamlit, Plotly |
 | Database | SQLite |
-| Data APIs | FinViz, yfinance |
+| Data APIs | yfinance (Yahoo Finance) |
 | Data Science | Pandas, NumPy, SciPy |
 | Hosting | Streamlit Cloud |
 
@@ -100,7 +100,7 @@ rebuilds.
 
 ### Web Application Workflow
 
-1. **Refresh Data**: Click "Refresh" to fetch latest stock data from FinViz (~1-2 min)
+1. **Refresh Data**: Click "Refresh" to fetch latest stock data from Yahoo Finance (~4-5 min)
 2. **Configure Scan**: Set portfolio size, positions, and filters
 3. **Run Scan**: Calculate HQM scores and generate recommendations
 4. **Analyze Results**: Review stocks, sectors, and risk metrics
@@ -167,7 +167,6 @@ momentum_trader/
 │   ├── config_loader.py   # Type-safe configuration loader
 │   ├── logger.py          # Centralized logging
 │   ├── formatting.py      # Number/percentage formatting helpers
-│   ├── finviz_patch.py    # Fixes FinViz logo placeholder leaking into tickers
 │   └── ui/
 │       ├── charts.py      # Plotly chart helpers
 │       └── state.py       # Session state management
@@ -184,7 +183,7 @@ momentum_trader/
 
 ## How HQM Scoring Works
 
-1. **Data Collection**: Fetch stocks from NYSE/NASDAQ via FinViz
+1. **Data Collection**: Screen NYSE/NASDAQ stocks above $2B market cap via the Yahoo Finance screener
 2. **Return Calculation**: Calculate 1M, 3M, 6M, 1Y returns
 3. **Percentile Ranking**: Rank each stock (0-100) per timeframe
 4. **Quality Filter**: Remove stocks below 25th percentile in ANY timeframe
@@ -237,7 +236,7 @@ MIT License
 ## Acknowledgments
 
 - Strategy inspired by [Qullamaggie](https://qullamaggie.com/) momentum trading approach
-- Data provided by [FinViz](https://finviz.com/) and [Yahoo Finance](https://finance.yahoo.com/)
+- Data provided by [Yahoo Finance](https://finance.yahoo.com/) via [yfinance](https://github.com/ranaroussi/yfinance)
 
 ## Research workspace
 
@@ -268,6 +267,6 @@ providers with deterministic fixtures; they do not verify live provider uptime.
 For Streamlit Community Cloud, use `streamlit_app.py` as the entry point and
 Python 3.12. Validate the branch before merging into the deployment branch. After
 deployment, check Home, refresh the universe in Scanner, and run a scan to confirm
-live FinViz and Yahoo Finance access. Existing Watchlist and Portfolio storage is
+live Yahoo Finance access. Existing Watchlist and Portfolio storage is
 still shared, with no user accounts; a private multi-user deployment needs
 authentication and per-user storage before it can hold private records.
