@@ -100,7 +100,7 @@ rebuilds.
 
 ### Web Application Workflow
 
-1. **Refresh Data**: Click "Refresh" to fetch latest stock data from Yahoo Finance (~4-5 min)
+1. **Refresh Data**: Click "Refresh" to load the latest stock data. It normally loads the nightly snapshot (~1s); if that is missing or older than the last US close, it refreshes live from Yahoo Finance (~4-5 min)
 2. **Configure Scan**: Set portfolio size, positions, and filters
 3. **Run Scan**: Calculate HQM scores and generate recommendations
 4. **Analyze Results**: Review stocks, sectors, and risk metrics
@@ -167,6 +167,7 @@ momentum_trader/
 │   ├── config_loader.py   # Type-safe configuration loader
 │   ├── logger.py          # Centralized logging
 │   ├── formatting.py      # Number/percentage formatting helpers
+│   ├── snapshot.py        # Nightly data snapshot (build, publish format, freshness)
 │   └── ui/
 │       ├── charts.py      # Plotly chart helpers
 │       └── state.py       # Session state management

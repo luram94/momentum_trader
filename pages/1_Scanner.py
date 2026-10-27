@@ -70,7 +70,14 @@ def refresh_data():
 
     try:
         stats = fetch_and_store_data(progress_callback)
-        st.session_state.refresh_notice = f"Refreshed {stats['total_stored']:,} stocks in {stats['duration_seconds']:.1f}s"
+        if stats['source'] == 'snapshot':
+            built = stats['snapshot_generated_at']
+            st.session_state.refresh_notice = (
+                f"Loaded {stats['total_stored']:,} stocks from the nightly snapshot "
+                f"({built:%d %b %Y, %H:%M} UTC) in {stats['duration_seconds']:.1f}s"
+            )
+        else:
+            st.session_state.refresh_notice = f"Refreshed {stats['total_stored']:,} stocks in {stats['duration_seconds']:.1f}s"
         progress_bar.empty()
         status_text.empty()
         return True

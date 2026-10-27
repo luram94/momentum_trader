@@ -68,6 +68,15 @@ Image has runtime deps only — no pytest inside the container.
   stores ~2,030 stocks in ≈ 4.5 min; if you see a few hundred, a page or an
   industry query broke. Sector/industry names are mapped to FinViz spelling
   ('Financial', 'Banks - Regional') so stored history lines up.
+- Refresh Data first tries the nightly snapshot (`hqm/snapshot.py`):
+  `.github/workflows/snapshot.yml` builds it weekdays 21:30 UTC and uploads
+  `stocks_snapshot.json.gz` (~150 KB) to the `data-snapshot` release
+  (`data.snapshot_url` in config.yaml). It's accepted if built after the
+  latest weekday 21:00 UTC close (2h grace for delayed cron runs), else the
+  live refresh runs. Success notice says "from the nightly snapshot" vs
+  "Refreshed ... in Ns". Rebuild on demand: `gh workflow run snapshot.yml`.
+  Tests that drive the live refresh must patch `snapshot.load_fresh`
+  (see `fake_yahoo` in tests/test_integration.py) or they hit the network.
 - A refresh that would store 0 stocks raises RuntimeError and keeps existing
   rows — intentional guard against Yahoo outages/rate limits, don't "fix" it.
 - Scan filters (RSI/SMA/ATR) default OFF in session state; a plain Run Scan

@@ -117,6 +117,8 @@ def _fake_download(closes):
 @pytest.fixture
 def fake_yahoo(monkeypatch):
     """Fake Yahoo endpoints; returns a setter to override screener/prices."""
+    # No published snapshot: these tests drive the live refresh
+    monkeypatch.setattr(database.snapshot, 'load_fresh', lambda url: None)
     monkeypatch.setattr(database, 'EquityQuery', _FakeQuery)
     monkeypatch.setattr(database, 'EQUITY_SCREENER_EQ_MAP', {'industry': _INDUSTRY_MAP})
 
@@ -158,6 +160,7 @@ class TestRefreshPipeline:
         msft = rows['MSFT']
         assert 0 < msft['return_1m'] < msft['return_3m'] < msft['return_6m'] < msft['return_1y']
         assert database.get_data_age_hours() < 0.1
+        assert stats['source'] == 'live'
 
     def test_pages_through_large_industries(self, temp_db, fake_yahoo, monkeypatch):
         monkeypatch.setattr(database, '_SCREEN_PAGE_SIZE', 1)
