@@ -24,6 +24,7 @@ from scipy.stats import percentileofscore
 from yfinance import EquityQuery
 from yfinance.const import EQUITY_SCREENER_EQ_MAP
 
+from hqm import snapshot
 from hqm.logger import get_logger
 from hqm.config_loader import get_config, PROJECT_ROOT
 
@@ -560,30 +561,21 @@ def _download_returns(
     return returns.rename_axis('Ticker').reset_index()
 
 
-def fetch_and_store_data(
+def fetch_live_stocks(
     progress_callback: Optional[Callable[[int, str], None]] = None
-) -> Dict[str, Any]:
+) -> pd.DataFrame:
     """
-    Fetch fresh data from Yahoo Finance and store in database.
+    Screen and price the universe live from Yahoo Finance.
 
     Args:
         progress_callback: Optional function(progress, message) for UI updates
 
     Returns:
-        dict with stats about the refresh
+        One row per stock with complete return data (snapshot.STOCK_COLUMNS).
+
+    Raises:
+        RuntimeError: If Yahoo returns nothing usable.
     """
-    init_database()
-
-    stats: Dict[str, Any] = {
-        'nyse_count': 0,
-        'nasdaq_count': 0,
-        'total_stored': 0,
-        'tickers_repaired': 0,
-        'duration_seconds': 0
-    }
-
-    start_time = datetime.now()
-
     def update_progress(pct: int, msg: str) -> None:
         if progress_callback:
             progress_callback(pct, msg)
@@ -608,23 +600,30 @@ def fetch_and_store_data(
 
     returns = _download_returns(universe['Ticker'].tolist(), update_progress)
 
-    update_progress(80, 'Storing data in database...')
-
     df = universe.merge(returns, on='Ticker', how='inner')
-    stats['nyse_count'] = int((df['Exchange'] == 'NYSE').sum())
-    stats['nasdaq_count'] = int((df['Exchange'] == 'NASDAQ').sum())
 
     # Remove rows with missing return data
-    return_columns = list(_RETURN_MONTHS)
-    df = df.dropna(subset=return_columns)
+    df = df.dropna(subset=list(_RETURN_MONTHS))
 
     if df.empty:
         raise RuntimeError(
             'Yahoo Finance returned no stocks with complete return data; '
             'keeping existing database contents'
         )
+    return df[snapshot.STOCK_COLUMNS]
 
-    # Store in database
+
+def _store_stocks(df: pd.DataFrame, refreshed_at: datetime) -> int:
+    """
+    Replace the stocks universe and record when its data is from.
+
+    Args:
+        df: Rows to store (snapshot.STOCK_COLUMNS).
+        refreshed_at: Local time the data was fetched.
+
+    Returns:
+        Number of history rows repaired (see _repair_doubled_tickers).
+    """
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -654,25 +653,81 @@ def fetch_and_store_data(
             row['Return_3M'],
             row['Return_6M'],
             row['Return_1Y'],
-            datetime.now().isoformat()
+            refreshed_at.isoformat()
         ))
 
     # The fresh universe is the reference that makes this decidable, so heal
     # any history written while the old FinViz scrape was doubling first
     # letters.
-    stats['tickers_repaired'] = _repair_doubled_tickers(conn)
+    repaired = _repair_doubled_tickers(conn)
 
     conn.commit()
     conn.close()
 
-    # Update metadata
-    set_last_refresh()
+    set_last_refresh(refreshed_at)
+    return repaired
 
+
+def fetch_and_store_data(
+    progress_callback: Optional[Callable[[int, str], None]] = None
+) -> Dict[str, Any]:
+    """
+    Load fresh data into the database: the nightly snapshot when it is
+    current, otherwise a live Yahoo Finance refresh.
+
+    Args:
+        progress_callback: Optional function(progress, message) for UI updates
+
+    Returns:
+        dict with stats about the refresh
+    """
+    init_database()
+
+    stats: Dict[str, Any] = {
+        'source': 'live',
+        'snapshot_generated_at': None,
+        'nyse_count': 0,
+        'nasdaq_count': 0,
+        'total_stored': 0,
+        'tickers_repaired': 0,
+        'duration_seconds': 0
+    }
+
+    start_time = datetime.now()
+
+    def update_progress(pct: int, msg: str) -> None:
+        if progress_callback:
+            progress_callback(pct, msg)
+        logger.debug(f"Progress {pct}%: {msg}")
+
+    snap = None
+    if config.data.snapshot_url:
+        update_progress(2, 'Checking nightly snapshot...')
+        snap = snapshot.load_fresh(config.data.snapshot_url)
+
+    if snap is not None:
+        df, generated_at = snap
+        stats['source'] = 'snapshot'
+        stats['snapshot_generated_at'] = generated_at
+        # Stored timestamps are naive local time; date the data by its build
+        refreshed_at = generated_at.astimezone().replace(tzinfo=None)
+    else:
+        df = fetch_live_stocks(update_progress)
+        refreshed_at = datetime.now()
+
+    update_progress(80, 'Storing data in database...')
+
+    stats['nyse_count'] = int((df['Exchange'] == 'NYSE').sum())
+    stats['nasdaq_count'] = int((df['Exchange'] == 'NASDAQ').sum())
+    stats['tickers_repaired'] = _store_stocks(df, refreshed_at)
     stats['total_stored'] = len(df)
     stats['duration_seconds'] = (datetime.now() - start_time).total_seconds()
 
     update_progress(100, 'Data refresh complete!')
-    logger.info(f"Data refresh complete: {stats['total_stored']} stocks stored")
+    logger.info(
+        f"Data refresh complete: {stats['total_stored']} stocks stored "
+        f"from {stats['source']}"
+    )
 
     return stats
 

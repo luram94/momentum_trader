@@ -38,6 +38,7 @@ class DataConfig:
     """Data collection configuration."""
     exchanges: List[str] = field(default_factory=lambda: ['NYSE', 'NASDAQ'])
     min_market_cap_usd: int = 2_000_000_000
+    snapshot_url: str = ''
     cache_expiry_hours: int = 24
 
 

@@ -16,6 +16,9 @@ data:
     - NYSE
     - NASDAQ
   min_market_cap_usd: 2000000000  # Mid cap and above
+  # Nightly universe published by .github/workflows/snapshot.yml; Refresh
+  # Data loads it when current and falls back to a live refresh. '' = off.
+  snapshot_url: 'https://github.com/luram94/momentum_trader/releases/download/data-snapshot/stocks_snapshot.json.gz'
   cache_expiry_hours: 24      # Data counts as fresh below this age (stale below 2x)
 
 # HQM Strategy Settings
